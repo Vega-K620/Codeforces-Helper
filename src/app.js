@@ -87,7 +87,140 @@ function formatDateTime(sec) {
   return `${mm}-${dd} ${hh}:${mi}`;
 }
 
+function formatRelativeAgo(sec) {
+  if (!sec) return '未知';
+  const diff = Math.max(0, Math.floor(Date.now() / 1000) - Number(sec));
+  if (diff < 120) return '刚刚活跃';
+  if (diff < 3600) return `${Math.floor(diff / 60)} 分钟前`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)} 小时前`;
+  return `${Math.floor(diff / 86400)} 天前`;
+}
+
+function normalizeClientAvatarUrl(rawUrl) {
+  if (!rawUrl || typeof rawUrl !== 'string') return '';
+  let u = rawUrl.trim();
+  if (!u || /no-avatar|no-title/i.test(u)) return '';
+  if (u.startsWith('data:image/')) return u;
+  if (u.startsWith('//')) return 'https:' + u;
+  if (u.startsWith('/')) return 'https://codeforces.com' + u;
+  if (u.startsWith('http://')) return u.replace(/^http:\/\//i, 'https://');
+  return u;
+}
+
+function getBestAvatarSrc(userInfo) {
+  if (!userInfo) return '';
+  const rawAvatar = String(userInfo.avatar || userInfo.titlePhoto || '');
+  if (/no-avatar|no-title/i.test(rawAvatar)) return '';
+  if (userInfo.avatarDataUrl && String(userInfo.avatarDataUrl).startsWith('data:image/')) {
+    return userInfo.avatarDataUrl;
+  }
+  return normalizeClientAvatarUrl(rawAvatar);
+}
+
+function renderAvatarElement(containerEl, userInfo, fallbackHandle) {
+  if (!containerEl) return;
+  const initials = String((userInfo && userInfo.handle) || fallbackHandle || 'CF')
+    .slice(0, 2)
+    .toUpperCase();
+  const src = getBestAvatarSrc(userInfo);
+  if (!src) {
+    containerEl.textContent = initials;
+    return;
+  }
+  containerEl.innerHTML = '';
+  const img = document.createElement('img');
+  img.src = src;
+  img.alt = initials;
+  img.referrerPolicy = 'no-referrer';
+  img.onerror = () => {
+    containerEl.textContent = initials;
+  };
+  containerEl.appendChild(img);
+}
+
+function getMiniAvatarHtml(userInfo, sizeOrFallback = 28) {
+  const size = typeof sizeOrFallback === 'number' ? sizeOrFallback : 28;
+  const fallbackHandle = typeof sizeOrFallback === 'string' ? sizeOrFallback : 'CF';
+  const initials = String((userInfo && userInfo.handle) || fallbackHandle || 'CF')
+    .slice(0, 2)
+    .toUpperCase();
+  const sizeStyle = `width:${size}px;height:${size}px;font-size:${Math.round(size * 0.4)}px;`;
+  const src = getBestAvatarSrc(userInfo);
+  if (!src) {
+    return `<span class="mini-avatar" style="${sizeStyle}">${initials}</span>`;
+  }
+  const safeInitials = initials.replace(/["'<>]/g, '');
+  return `<span class="mini-avatar" style="${sizeStyle}"><img src="${src}" alt="${safeInitials}" referrerpolicy="no-referrer" onerror="this.parentElement.textContent='${safeInitials}'" /></span>`;
+}
+
+async function recordErrorLog(source, errOrMsg, context = '') {
+  const isErrObj = errOrMsg && typeof errOrMsg === 'object';
+  const entry = {
+    time: new Date().toLocaleString('zh-CN', { hour12: false }),
+    source: source || 'Renderer',
+    message: isErrObj ? (errOrMsg.message || String(errOrMsg)) : String(errOrMsg || 'Unknown error'),
+    stack: isErrObj ? (errOrMsg.stack || '') : '',
+    context: String(context || '')
+  };
+  state.errorLogs.unshift(entry);
+  if (state.errorLogs.length > 80) state.errorLogs = state.errorLogs.slice(0, 80);
+
+  if (window.cfDesktop && window.cfDesktop.appendErrorLog) {
+    try {
+      const updated = await window.cfDesktop.appendErrorLog(entry);
+      if (Array.isArray(updated) && updated.length > 0) {
+        state.errorLogs = updated;
+      }
+    } catch (_) {}
+  }
+  renderErrorLogsBox();
+}
+
+function renderErrorLogsBox() {
+  const badge = document.getElementById('error-log-count-badge');
+  const box = document.getElementById('error-log-list-box');
+  const logs = state.errorLogs || [];
+
+  if (badge) {
+    badge.textContent = `${logs.length} 条记录`;
+    badge.className = logs.length > 0 ? 'badge badge-rose' : 'badge badge-blue';
+  }
+  if (!box) return;
+
+  if (logs.length === 0) {
+    box.innerHTML = `<div style="color: var(--text-muted); text-align: center; padding: 16px;">暂无报错记录，系统运行正常</div>`;
+    return;
+  }
+
+  box.innerHTML = logs.map((item, idx) => {
+    const safeMsg = String(item.message || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const safeCtx = String(item.context || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const safeStack = String(item.stack || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return `
+      <div style="padding: 8px 10px; border-bottom: 1px solid rgba(255,255,255,0.06); ${idx === 0 ? 'background: rgba(244,63,94,0.08); border-radius: 6px;' : ''}">
+        <div style="display: flex; justify-content: space-between; color: #fb7185; font-weight: 700;">
+          <span>[${item.source || 'Error'}] ${safeMsg}</span>
+          <span style="color: var(--text-muted); font-weight: 400;">${item.time || ''}</span>
+        </div>
+        ${safeCtx ? `<div style="color: #9ca3af; font-size: 11px; margin-top: 2px;">上下文: ${safeCtx}</div>` : ''}
+        ${safeStack ? `<pre style="margin: 4px 0 0 0; color: #6b7280; font-size: 10.5px; white-space: pre-wrap; word-break: break-all;">${safeStack}</pre>` : ''}
+      </div>
+    `;
+  }).join('');
+}
+
+window.addEventListener('error', (event) => {
+  recordErrorLog('WindowError', event.error || event.message, `${event.filename || ''}:${event.lineno || ''}`);
+});
+
+window.addEventListener('unhandledrejection', (event) => {
+  recordErrorLog('UnhandledPromise', event.reason || 'Promise rejected');
+});
+
 function showToast(msg, isError = false) {
+  if (isError) {
+    recordErrorLog('ToastAlert', msg);
+  }
   const container = document.getElementById('toast-container');
   if (!container) return;
   const el = document.createElement('div');
@@ -115,10 +248,17 @@ const state = {
     activeHandle: 'Demo_Coder',
     accounts: [{ handle: 'Demo_Coder', label: '内置演示账号 (Demo)', isDemo: true }],
     apiKey: '',
-    apiSecret: ''
+    apiSecret: '',
+    apiVerified: false
   },
   rawData: null,
   analysis: null,
+  friendsList: [],
+  friendsSource: 'demo', // 'api' | 'demo'
+  pkRivalHandle: '',
+  pkRivalRaw: null,
+  pkRivalAnalysis: null,
+  errorLogs: [],
   charts: {}
 };
 
@@ -352,12 +492,15 @@ function analyzeDataset(rawData) {
 
   const radarScores = RADAR_DIMS.map((dim) => {
     const matched = tagDiagnostics.filter((t) => dim.tags.includes(t.tag) && t.acCount > 0);
-    if (matched.length === 0) return { name: dim.name, score: 18 };
+    if (matched.length === 0) return { name: dim.name, score: 18, solvedCount: 0, avgRating: 0 };
     const totalAc = matched.reduce((s, m) => s + m.acCount, 0);
     const weightedMastery = matched.reduce((s, m) => s + m.masteryScore * m.acCount, 0) / Math.max(1, totalAc);
+    const weightedAvgRating = Math.round(
+      matched.reduce((s, m) => s + (m.avgRating || 1200) * m.acCount, 0) / Math.max(1, totalAc)
+    );
     const maxScore = Math.max(...matched.map((m) => m.masteryScore));
     const finalScore = Math.min(98, Math.round(weightedMastery * 0.55 + maxScore * 0.45));
-    return { name: dim.name, score: finalScore };
+    return { name: dim.name, score: finalScore, solvedCount: totalAc, avgRating: weightedAvgRating };
   });
 
   // =========================================================================
@@ -507,10 +650,12 @@ function renderAllViews() {
   maxRatingEl.style.color = maxRankInfo.color;
 
   const avatarEl = document.getElementById('sidebar-avatar');
-  if (A.userInfo.titlePhoto && A.userInfo.titlePhoto.startsWith('http')) {
-    avatarEl.innerHTML = `<img src="${A.userInfo.titlePhoto}" alt="avatar" />`;
-  } else {
-    avatarEl.textContent = (A.userInfo.handle || 'CF').slice(0, 2).toUpperCase();
+  renderAvatarElement(avatarEl, A.userInfo, state.config.activeHandle);
+
+  const apiBadgeEl = document.getElementById('sidebar-api-verified-badge');
+  if (apiBadgeEl) {
+    const hasVerifiedKey = Boolean(state.config.apiKey && state.config.apiSecret && state.config.apiVerified);
+    apiBadgeEl.style.display = hasVerifiedKey ? 'inline-block' : 'none';
   }
 
   // Demo Banner visibility
@@ -536,6 +681,7 @@ function renderAllViews() {
   renderTagsTab();
   renderContestsTab();
   renderPredictorTab();
+  renderFriendsTab();
   renderSettingsTab();
 
   setTimeout(resizeAllCharts, 60);
@@ -573,11 +719,17 @@ function renderOverviewTab() {
   document.getElementById('ov-kpi-weak').textContent = `${weakTags.length} 个薄弱项`;
   document.getElementById('ov-kpi-weak-sub').textContent = `积压待补题目: ${A.stuckProblems.length} 道`;
 
-  // Overview Rating Chart
+  // Overview Rating Chart (explicitly include practiceRating & currentRating in Y-axis bounds so markLine is never clipped)
   const ratingChart = getOrCreateChart('chart-overview-rating');
   if (ratingChart) {
     const xData = A.ratingHistory.map((r) => formatDate(r.ratingUpdateTimeSeconds));
     const yData = A.ratingHistory.map((r) => r.newRating);
+    const allPlotVals = [...yData, A.practiceRating, A.currentRating].filter((v) => Number(v) > 0);
+    const minPlot = allPlotVals.length ? Math.min(...allPlotVals) : 800;
+    const maxPlot = allPlotVals.length ? Math.max(...allPlotVals) : 2000;
+    const yAxisMin = Math.max(400, Math.floor((minPlot - 140) / 100) * 100);
+    const yAxisMax = Math.ceil((maxPlot + 150) / 100) * 100;
+
     ratingChart.setOption({
       backgroundColor: 'transparent',
       tooltip: {
@@ -586,16 +738,17 @@ function renderOverviewTab() {
         borderColor: '#374151',
         textStyle: { color: '#f3f4f6', fontSize: 12 }
       },
-      grid: { left: 45, right: 24, top: 24, bottom: 28 },
+      grid: { left: 48, right: 24, top: 28, bottom: 28 },
       xAxis: {
         type: 'category',
-        data: xData.length ? xData : ['暂无比赛'],
+        data: xData.length ? xData : ['当前状态'],
         axisLabel: { color: '#9ca3af', fontSize: 11 },
         axisLine: { lineStyle: { color: '#374151' } }
       },
       yAxis: {
         type: 'value',
-        min: (val) => Math.max(600, Math.floor((val.min - 150) / 100) * 100),
+        min: yAxisMin,
+        max: yAxisMax,
         axisLabel: { color: '#9ca3af', fontSize: 11 },
         splitLine: { lineStyle: { color: 'rgba(255,255,255,0.06)' } }
       },
@@ -683,7 +836,7 @@ function renderOverviewTab() {
   const highlightBox = document.getElementById('ov-tag-highlights');
   highlightBox.innerHTML = `
     <div style="margin-bottom: 14px;">
-      <div style="font-size: 12px; color: #34d399; font-weight: 700; margin-bottom: 8px;">🟢 拿手强项 (高掌握度 & 高通过率)</div>
+      <div style="font-size: 12px; color: #34d399; font-weight: 700; margin-bottom: 8px;">拿手强项 (高掌握度 & 高通过率)</div>
       <div class="tag-chip-list">
         ${strengths.map((t) => `
           <div class="tag-chip" data-jump-tag="${t.tag}">
@@ -694,7 +847,7 @@ function renderOverviewTab() {
       </div>
     </div>
     <div>
-      <div style="font-size: 12px; color: #fbbf24; font-weight: 700; margin-bottom: 8px;">🟠 待改进短板 (建议优先补题与专项训练)</div>
+      <div style="font-size: 12px; color: #fbbf24; font-weight: 700; margin-bottom: 8px;">待改进短板 (建议优先补题与专项训练)</div>
       <div class="tag-chip-list">
         ${weaknesses.map((t) => `
           <div class="tag-chip" style="border-color: rgba(245,158,11,0.35);" data-jump-tag="${t.tag}">
@@ -934,9 +1087,9 @@ function renderProblemExplorerTable() {
     const rColor = getProblemRatingColor(p.rating);
     const statusHtml = p.solved
       ? (p.attemptsBeforeAc === 0
-          ? '<span class="badge badge-green">⚡ 1A 一遍过</span>'
-          : `<span class="badge badge-blue">✅ AC (${p.totalAttempts}次提交)</span>`)
-      : `<span class="badge badge-rose">❌ 待补题 (${p.totalAttempts}次未过)</span>`;
+          ? '<span class="badge badge-green">1A 一遍过</span>'
+          : `<span class="badge badge-blue">AC (${p.totalAttempts}次提交)</span>`)
+      : `<span class="badge badge-rose">待补题 (${p.totalAttempts}次未过)</span>`;
 
     return `
       <tr>
@@ -999,6 +1152,9 @@ function renderTagsTab() {
       weakness: '#f59e0b',
       blindspot: '#a855f7'
     };
+    const xValues = [...activeTags.map((t) => t.avgRating), A.currentRating].filter((v) => v > 0);
+    const xMin = xValues.length ? Math.max(700, Math.floor((Math.min(...xValues) - 120) / 100) * 100) : 800;
+    const xMax = xValues.length ? Math.ceil((Math.max(...xValues) + 120) / 100) * 100 : 2200;
 
     scatterChart.setOption({
       backgroundColor: 'transparent',
@@ -1022,7 +1178,8 @@ function renderTagsTab() {
         nameGap: 25,
         nameTextStyle: { color: '#9ca3af', fontSize: 11 },
         type: 'value',
-        min: (v) => Math.max(800, Math.floor((v.min - 100) / 100) * 100),
+        min: xMin,
+        max: xMax,
         axisLabel: { color: '#9ca3af', fontSize: 11 },
         splitLine: { lineStyle: { color: 'rgba(255,255,255,0.06)' } }
       },
@@ -1123,9 +1280,9 @@ function renderTagsTab() {
   // Populate Weak-Tag Recommender Select
   const recSelect = document.getElementById('rec-tag-select');
   const priorityTags = [...weaknesses, ...blindspots, ...solids, ...strengths];
-  recSelect.innerHTML = `<option value="auto_weak">🔥 智能混推所有薄弱/盲区标签</option>` +
+  recSelect.innerHTML = `<option value="auto_weak">智能混推所有薄弱/盲区标签</option>` +
     priorityTags.map((t) => {
-      const prefix = t.category === 'weakness' ? '🟠 [待改进]' : (t.category === 'blindspot' ? '⚪ [盲区]' : '🟢');
+      const prefix = t.category === 'weakness' ? '[待改进]' : (t.category === 'blindspot' ? '[盲区]' : '[巩固]');
       return `<option value="${t.tag}">${prefix} ${t.cnName}</option>`;
     }).join('');
 
@@ -1227,7 +1384,7 @@ function renderStuckProblemsQueue() {
         <td><span class="badge badge-rose">${p.totalAttempts} 次未过</span></td>
       </tr>
     `;
-  }).join('') || `<tr><td colspan="5" style="text-align:center;color:#34d399;padding:20px;">🎉 太强了！当前没有任何积压未过的题目！</td></tr>`;
+  }).join('') || `<tr><td colspan="5" style="text-align:center;color:#34d399;padding:20px;">当前没有任何积压未过的题目</td></tr>`;
 }
 
 function renderTagDiagnosticTable() {
@@ -1242,10 +1399,10 @@ function renderTagDiagnosticTable() {
   if (sortMode === 'stuck_desc') list.sort((a, b) => b.stuckCount - a.stuckCount);
 
   const catBadgeMap = {
-    strength: '<span class="badge badge-green">🟢 优势擅长</span>',
-    solid: '<span class="badge badge-blue">🔵 常规巩固</span>',
-    weakness: '<span class="badge badge-amber">🟠 薄弱待改进</span>',
-    blindspot: '<span class="badge badge-purple">⚪ 高频盲区</span>'
+    strength: '<span class="badge badge-green">优势擅长</span>',
+    solid: '<span class="badge badge-blue">常规巩固</span>',
+    weakness: '<span class="badge badge-amber">薄弱待改进</span>',
+    blindspot: '<span class="badge badge-purple">高频盲区</span>'
   };
 
   const tbody = document.getElementById('tag-diagnostic-tbody');
@@ -1316,6 +1473,14 @@ function renderContestsTab() {
   if (cChart) {
     const xDates = contests.map((c) => formatDate(c.ratingUpdateTimeSeconds));
     const yRatings = contests.map((c) => c.newRating);
+    const seriesRatings = yRatings.length ? yRatings : [A.currentRating];
+    const allRefRatings = [...seriesRatings, A.practiceRating, A.currentRating].filter(
+      (v) => Number.isFinite(v) && v > 0
+    );
+    const minRef = allRefRatings.length ? Math.min(...allRefRatings) : 1200;
+    const maxRef = allRefRatings.length ? Math.max(...allRefRatings) : 1800;
+    const yAxisMin = Math.max(600, Math.floor((minRef - 150) / 100) * 100);
+    const yAxisMax = Math.max(2000, Math.ceil((maxRef + 160) / 100) * 100);
 
     cChart.setOption({
       backgroundColor: 'transparent',
@@ -1333,7 +1498,8 @@ function renderContestsTab() {
           return `<b>${c.contestName}</b><br/>` +
                  `日期: ${formatDate(c.ratingUpdateTimeSeconds)}<br/>` +
                  `排名: <b>#${c.rank}</b><br/>` +
-                 `Rating: ${c.oldRating} → <b>${c.newRating}</b> (${dStr})`;
+                 `Rating: ${c.oldRating} → <b>${c.newRating}</b> (${dStr})<br/>` +
+                 `<span style="color:#10b981;">刷题拟合实力线: <b>${A.practiceRating}</b></span>`;
         }
       },
       grid: { left: 48, right: 26, top: 24, bottom: 52 },
@@ -1349,18 +1515,30 @@ function renderContestsTab() {
       },
       yAxis: {
         type: 'value',
-        min: (v) => Math.max(700, Math.floor((v.min - 150) / 100) * 100),
-        max: (v) => Math.max(2000, Math.ceil((v.max + 150) / 100) * 100),
+        min: yAxisMin,
+        max: yAxisMax,
         axisLabel: { color: '#9ca3af', fontSize: 11 },
         splitLine: { lineStyle: { color: 'rgba(255,255,255,0.06)' } }
       },
       series: [
         {
           type: 'line',
-          data: yRatings.length ? yRatings : [A.currentRating],
+          data: seriesRatings,
           symbolSize: 8,
           itemStyle: { color: '#facc15', borderColor: '#111827', borderWidth: 2 },
           lineStyle: { width: 3, color: '#3b82f6' },
+          markLine: {
+            silent: true,
+            symbol: ['none', 'none'],
+            lineStyle: { type: 'dashed', color: '#10b981', width: 2 },
+            label: {
+              formatter: `刷题实力拟合: ${A.practiceRating}`,
+              color: '#34d399',
+              fontSize: 11,
+              position: 'insideEndTop'
+            },
+            data: [{ yAxis: A.practiceRating }]
+          },
           markArea: {
             silent: true,
             data: [
@@ -1424,7 +1602,7 @@ function renderContestsTab() {
         <div>
           <div style="font-weight:700; font-size:13px; color:#f3f4f6;">${u.name}</div>
           <div style="font-size:11.5px; color:var(--text-secondary); margin-top:4px;">
-            🕒 开始时间: ${formatDateTime(u.startTimeSeconds)} | 时长: ${durHrs}h
+            开始时间: ${formatDateTime(u.startTimeSeconds)} | 时长: ${durHrs}h
           </div>
         </div>
         <div style="text-align:right; flex-shrink:0;">
@@ -1459,16 +1637,17 @@ function renderPredictorTab() {
   gapEl.textContent = gap >= 0 ? `+${gap}` : `${gap}`;
   gapEl.style.color = gap >= 0 ? '#34d399' : '#fb7185';
 
-  // Gauge Chart
+  // Gauge Chart (auto-scales max for LGM / high practiceRating)
   const gChart = getOrCreateChart('chart-predictor-gauge');
   if (gChart) {
+    const gaugeMax = Math.max(2600, Math.ceil((Math.max(pracR, curR) + 200) / 200) * 200);
     gChart.setOption({
       backgroundColor: 'transparent',
       series: [
         {
           type: 'gauge',
           min: 800,
-          max: 2600,
+          max: gaugeMax,
           splitNumber: 6,
           radius: '90%',
           center: ['50%', '58%'],
@@ -1511,24 +1690,24 @@ function renderPredictorTab() {
   const insightBox = document.getElementById('pred-insight-box');
   if (gap >= 50) {
     insightBox.innerHTML = `
-      📈 <strong>实力评估结论：具备明显上分潜力 (+${gap})</strong><br/>
+      <strong>实力评估结论：具备明显上分潜力 (+${gap})</strong><br/>
       您近期攻克题目的加权难度为 <strong>${A.recentAvgDiff}</strong>，前 28% 高难攻克均值达 <strong>${A.recentTop80Diff}</strong>，实力已达到 <strong>${getCfRankInfo(pracR).cn}</strong> 水准。只要在接下来的比赛中稳住前两题的一发通过率，预计未来 2~3 场比赛可稳定向 <strong>${pracR}</strong> 靠拢。
     `;
   } else if (gap >= -40) {
     insightBox.innerHTML = `
-      ⚖️ <strong>实力评估结论：刷题难度与当前段位基本匹配 (${gap >= 0 ? '+' + gap : gap})</strong><br/>
+      <strong>实力评估结论：刷题难度与当前段位基本匹配 (${gap >= 0 ? '+' + gap : gap})</strong><br/>
       您近期训练题目的有效难度 (<strong>${A.recentAvgDiff}</strong>) 与您当前的官方 Rating (<strong>${curR}</strong>) 处于同一水平线。若想在接下来的比赛中突破瓶颈，建议在「Tag 强弱项诊断」中选择 <strong>当前 Rating +150 分</strong> 的进阶题目进行专项突破。
     `;
   } else {
     insightBox.innerHTML = `
-      ⚠️ <strong>实力评估结论：近期刷题难度偏低 (${gap})，警惕掉分风险</strong><br/>
+      <strong>实力评估结论：近期刷题难度偏低 (${gap})，注意掉分风险</strong><br/>
       您近期刷题的平均难度 (<strong>${A.recentAvgDiff}</strong>) 低于您当前的比赛 Rating (<strong>${curR}</strong>)。长期停留在低分段舒适区可能导致比赛后半场手生，建议减少简单题数量，增加 <strong>${curR} ~ ${curR + 200}</strong> 难度区间的训练。
     `;
   }
 
   // Initialize Simulator Sliders to user's current rating
   const baseSlider = document.getElementById('sim-base-rating');
-  baseSlider.value = Math.max(800, Math.min(2800, curR));
+  baseSlider.value = Math.max(800, Math.min(3500, curR));
 
   updateSimulatorView();
   renderNextTierRoadmap();
@@ -1566,7 +1745,7 @@ function updateSimulatorView() {
   newREl.style.color = getCfRankInfo(sim.newRating).color;
 
   document.getElementById('sim-breakeven-hint').innerHTML =
-    `💡 在本场 ${pool.label} 中，您的<strong>保分名次 (Δ = 0)</strong> 约为第 <strong>#${sim.breakEvenRank}</strong> 名；若想单场暴涨 <strong>+50 分</strong>，需排进前 <strong>#${estimateRankForTargetDelta(baseRating, contestType, 50)}</strong> 名。`;
+    `在本场 ${pool.label} 中，您的<strong>保分名次 (Δ = 0)</strong> 约为第 <strong>#${sim.breakEvenRank}</strong> 名；若想单场暴涨 <strong>+50 分</strong>，需排进前 <strong>#${estimateRankForTargetDelta(baseRating, contestType, 50)}</strong> 名。`;
 
   // Render Rank vs Delta Curve
   const curveChart = getOrCreateChart('chart-predictor-curve');
@@ -1648,15 +1827,15 @@ function renderNextTierRoadmap() {
 
     <div style="display:flex; flex-direction:column; gap:10px; font-size:12.5px;">
       <div style="padding:11px 14px; border-radius:9px; background:rgba(16,185,129,0.08); border:1px solid rgba(16,185,129,0.25);">
-        🚀 <strong>方案 A：一场直接冲段（需 +${needed} 分）</strong><br/>
+        <strong>方案 A：一场直接冲段（需 +${needed} 分）</strong><br/>
         在标准 Div.2 (12,000人) 比赛中需排进约前 <strong>#${oneShotRank} 名</strong>（当场表现分需达 <strong>~${curR + Math.round(needed * 3.8)}</strong>）。
       </div>
       <div style="padding:11px 14px; border-radius:9px; background:rgba(59,130,246,0.08); border:1px solid rgba(59,130,246,0.25);">
-        🧭 <strong>方案 B：三场稳步晋级（场均 +${threeStepDelta} 分）</strong><br/>
+        <strong>方案 B：三场稳步晋级（场均 +${threeStepDelta} 分）</strong><br/>
         每场 Div.2 比赛只需稳定保持在前 <strong>#${threeStepRank} 名</strong> 左右即可在 3 场内顺利晋升。
       </div>
       <div style="padding:11px 14px; border-radius:9px; background:rgba(139,92,246,0.08); border:1px solid rgba(139,92,246,0.25);">
-        📚 <strong>日常训练建议难度区间：${Math.round((curR + 100) / 100) * 100} ~ ${Math.round((rInfo.nextRating + 100) / 100) * 100}</strong><br/>
+        <strong>日常训练建议难度区间：${Math.round((curR + 100) / 100) * 100} ~ ${Math.round((rInfo.nextRating + 100) / 100) * 100}</strong><br/>
         重点清理「Tag 强弱项诊断」中的薄弱标签与待补题目。
       </div>
     </div>
@@ -1664,7 +1843,448 @@ function renderNextTierRoadmap() {
 }
 
 /* --------------------------------------------------------------------------
-   Tab 6: Account & Settings
+   Tab 6: Friends Leaderboard & 1v1 Capability PK (API Key Exclusive + PK)
+   -------------------------------------------------------------------------- */
+function renderFriendsTab() {
+  const A = state.analysis;
+  if (!A) return;
+
+  const hasApi = Boolean(state.config.apiKey && state.config.apiSecret);
+  const banner = document.getElementById('friends-api-banner');
+  const bannerText = document.getElementById('friends-api-banner-text');
+  const navBadge = document.getElementById('nav-friends-badge');
+
+  // If no friends loaded yet, fall back to demoFriends from rawData so table is never empty
+  if ((!state.friendsList || state.friendsList.length === 0) && state.rawData && Array.isArray(state.rawData.demoFriends)) {
+    state.friendsList = state.rawData.demoFriends;
+    state.friendsSource = 'demo';
+  }
+
+  const friends = state.friendsList || [];
+  const onlineCount = friends.filter((f) => f.isOnline).length;
+
+  if (navBadge) {
+    navBadge.textContent = state.friendsSource === 'api' ? `${friends.length}人` : 'PK';
+  }
+
+  if (banner && bannerText) {
+    if (hasApi && state.friendsSource === 'api') {
+      banner.style.background = 'linear-gradient(135deg, rgba(16, 185, 129, 0.14), rgba(59, 130, 246, 0.12))';
+      banner.style.borderColor = 'rgba(16, 185, 129, 0.4)';
+      bannerText.innerHTML = `<strong>API Key 私密签名已激活</strong> · 已通过 <code>user.friends</code> SHA-512 加密签名接口成功拉取 <strong>${friends.length}</strong> 位官方好友（当前 <strong>${onlineCount}</strong> 人在线）。点击任一好友即可发起 1v1 雷达对比。`;
+    } else if (hasApi) {
+      banner.style.background = 'linear-gradient(135deg, rgba(59, 130, 246, 0.14), rgba(139, 92, 246, 0.12))';
+      banner.style.borderColor = 'rgba(59, 130, 246, 0.35)';
+      bannerText.innerHTML = `<strong>已检测到 API Key 配置</strong> · 点击右侧「同步官方好友列表」即可使用 SHA-512 签名调用 Codeforces 私有接口 <code>user.friends</code> 获取关注好友及实时在线状态。`;
+    } else {
+      banner.style.background = 'linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(59, 130, 246, 0.10))';
+      banner.style.borderColor = 'rgba(245, 158, 11, 0.35)';
+      bannerText.innerHTML = `<strong>当前展示示例好友列表</strong>（配置 API Key 后可同步您的 CF 真实关注好友与在线状态）。即使未配置 API Key，您也可以在下方输入任意 CF 选手 Handle 进行 <strong>1v1 实力雷达与 Tag 强弱 PK</strong>！`;
+    }
+  }
+
+  const countBadge = document.getElementById('friends-count-badge');
+  if (countBadge) {
+    countBadge.textContent = `${state.friendsSource === 'api' ? '官方好友' : '示例好友'} ${friends.length} 人`;
+  }
+  const onlineBadge = document.getElementById('friends-online-badge');
+  if (onlineBadge) {
+    onlineBadge.textContent = `当前在线 ${onlineCount} 人`;
+  }
+
+  // Populate Friends Leaderboard Table (8 columns matching index.html)
+  const tbody = document.getElementById('friends-leaderboard-tbody');
+  if (tbody) {
+    const myRating = A.currentRating || 1500;
+    tbody.innerHTML = friends.map((f, idx) => {
+      const fRating = f.rating || 0;
+      const fMax = f.maxRating || fRating;
+      const rInfo = getCfRankInfo(fRating);
+      const maxInfo = getCfRankInfo(fMax);
+      const diff = fRating - myRating;
+      const diffBadge = diff > 0
+        ? `<span class="badge badge-rose">比我高 +${diff}</span>`
+        : diff < 0
+          ? `<span class="badge badge-green">我领先 +${Math.abs(diff)}</span>`
+          : `<span class="badge badge-blue">持平 (0)</span>`;
+
+      const onlinePill = f.isOnline
+        ? `<span class="online-pill online">当前在线</span>`
+        : `<span class="online-pill offline">${formatRelativeAgo(f.lastOnlineTimeSeconds)}</span>`;
+
+      return `
+        <tr>
+          <td style="font-weight:700; color:var(--text-muted);">#${idx + 1}</td>
+          <td>
+            <div style="display:flex; align-items:center; gap:9px;">
+              ${getMiniAvatarHtml(f, 28)}
+              <div>
+                <div style="font-weight:800; color:${rInfo.color}; font-size:13.5px;">${f.handle}</div>
+                ${f.organization ? `<div style="font-size:11px; color:var(--text-muted);">${f.organization}</div>` : ''}
+              </div>
+            </div>
+          </td>
+          <td>${onlinePill}</td>
+          <td><span style="color:${rInfo.color}; font-weight:700;">${rInfo.title}</span></td>
+          <td><span style="font-weight:800; font-size:14px; color:${rInfo.color};">${fRating || 'Unrated'}</span></td>
+          <td><span style="font-weight:700; font-size:13px; color:${maxInfo.color};">${fMax || '-'}</span></td>
+          <td>${diffBadge}</td>
+          <td>
+            <div style="display:flex; gap:6px;">
+              <button class="btn-secondary" data-pk-handle="${f.handle}" style="padding:4px 9px; font-size:11.5px; color:#60a5fa; border-color:rgba(59,130,246,0.35);">1v1 PK</button>
+              <button class="btn-secondary" data-switch-friend="${f.handle}" style="padding:4px 9px; font-size:11.5px;">查看</button>
+            </div>
+          </td>
+        </tr>
+      `;
+    }).join('') || `<tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:24px;">暂无好友数据，可点击右上角「同步官方好友列表」</td></tr>`;
+  }
+
+  // Populate PK friend quick-select dropdown
+  const pkSelect = document.getElementById('pk-friend-select');
+  if (pkSelect) {
+    pkSelect.innerHTML = `<option value="">-- 从列表快速选择对手 --</option>` +
+      friends.map((f) => `<option value="${f.handle}" ${state.pkRivalHandle.toLowerCase() === f.handle.toLowerCase() ? 'selected' : ''}>${f.handle} (${f.rating || 'Unrated'})</option>`).join('');
+  }
+
+  const pkInput = document.getElementById('pk-rival-input');
+  if (pkInput && !pkInput.value && state.pkRivalHandle) {
+    pkInput.value = state.pkRivalHandle;
+  }
+
+  renderPkComparison();
+}
+
+async function syncOfficialFriends(silent = false) {
+  if (!window.cfDesktop || !window.cfDesktop.fetchFriends) return;
+
+  const hasApi = Boolean(state.config.apiKey && state.config.apiSecret);
+  if (!hasApi && !silent) {
+    showToast('请先在「账号与 API 设置」中填写 API Key 与 Secret！', true);
+    switchTab('tab-settings');
+    return;
+  }
+
+  try {
+    if (!silent) setSyncStatus('正在验证 API Key 并同步好友...', true);
+    const res = await window.cfDesktop.fetchFriends({
+      apiKey: state.config.apiKey,
+      apiSecret: state.config.apiSecret,
+      activeHandle: state.config.activeHandle
+    });
+
+    if (res && Array.isArray(res.friends)) {
+      state.friendsList = res.friends;
+      state.friendsSource = res.source || 'demo';
+      renderFriendsTab();
+      renderSettingsTab();
+
+      // Update sidebar verified badge
+      const apiVerifiedBadge = document.getElementById('sidebar-api-verified-badge');
+      if (apiVerifiedBadge) {
+        apiVerifiedBadge.style.display = state.friendsSource === 'api' ? 'inline-block' : 'none';
+      }
+
+      if (!silent) {
+        setSyncStatus(`已同步 ${res.friends.length} 位好友`, false);
+        if (res.source === 'api') {
+          showToast(`API Key 签名验证成功，已同步 ${res.friends.length} 位官方好友`);
+        } else {
+          showToast('当前显示演示好友列表');
+        }
+      }
+    }
+  } catch (err) {
+    recordErrorLog({
+      source: 'syncOfficialFriends',
+      message: err.message || String(err),
+      stack: err.stack || ''
+    });
+    if (!silent) {
+      setSyncStatus('好友同步失败', false);
+      showToast(err.message || 'API Key 签名校验或拉取好友失败', true);
+    }
+    const verifyBox = document.getElementById('api-verify-status-box');
+    if (verifyBox) {
+      verifyBox.style.display = 'block';
+      verifyBox.style.background = 'rgba(244, 63, 94, 0.12)';
+      verifyBox.style.border = '1px solid rgba(244, 63, 94, 0.35)';
+      verifyBox.style.color = '#fb7185';
+      verifyBox.innerHTML = `<strong>API Key 签名验证失败</strong>：${err.message || '请检查 Key 与 Secret 是否填写正确'}`;
+    }
+  }
+}
+
+async function loadRivalForPk(rivalHandle) {
+  const cleanHandle = String(rivalHandle || '').trim();
+  if (!cleanHandle) {
+    showToast('请输入或选择要对比的对手 Handle', true);
+    return;
+  }
+
+  try {
+    setSyncStatus(`正在加载对手 ${cleanHandle} 数据...`, true);
+    const pkBtn = document.getElementById('btn-start-pk');
+    if (pkBtn) {
+      pkBtn.disabled = true;
+      pkBtn.textContent = '正在分析对手...';
+    }
+
+    const rivalRaw = await window.cfDesktop.fetchUserData({
+      handle: cleanHandle,
+      apiKey: state.config.apiKey,
+      apiSecret: state.config.apiSecret,
+      forceRefresh: false
+    });
+
+    state.pkRivalHandle = (rivalRaw.userInfo && rivalRaw.userInfo.handle) || cleanHandle;
+    state.pkRivalRaw = rivalRaw;
+    state.pkRivalAnalysis = analyzeDataset(rivalRaw);
+
+    const pkInput = document.getElementById('pk-rival-input');
+    if (pkInput) pkInput.value = state.pkRivalHandle;
+
+    renderFriendsTab();
+    setSyncStatus(`已完成与 ${state.pkRivalHandle} 的 1v1 对比`, false);
+  } catch (err) {
+    recordErrorLog({
+      source: 'loadRivalForPk',
+      message: `加载对手 ${cleanHandle} 失败: ${err.message || String(err)}`,
+      stack: err.stack || ''
+    });
+    setSyncStatus('加载对手失败', false);
+    showToast(`加载对手 ${cleanHandle} 失败: ${err.message}`, true);
+  } finally {
+    const pkBtn = document.getElementById('btn-start-pk');
+    if (pkBtn) {
+      pkBtn.disabled = false;
+      pkBtn.textContent = '开始 1v1 实力对比';
+    }
+  }
+}
+
+function renderPkComparison() {
+  const myA = state.analysis;
+  const rivalA = state.pkRivalAnalysis;
+  const h2hBox = document.getElementById('pk-h2h-summary');
+  if (!myA || !h2hBox) return;
+
+  if (!rivalA) {
+    h2hBox.innerHTML = `
+      <div style="text-align:center; color:var(--text-secondary); padding:16px;">
+        请在上方选择一位好友或输入任意 Codeforces 选手 Handle，点击「<strong>开始 1v1 实力对比</strong>」生成双人能力雷达与题单对比。
+      </div>
+    `;
+    return;
+  }
+
+  const myUser = myA.userInfo || {};
+  const rivalUser = rivalA.userInfo || {};
+  const myHandle = myUser.handle || state.config.activeHandle || 'Me';
+  const rivalHandle = rivalUser.handle || state.pkRivalHandle || 'Rival';
+  const myRankInfo = getCfRankInfo(myA.currentRating);
+  const rivalRankInfo = getCfRankInfo(rivalA.currentRating);
+
+  const myTotalSolved = (myA.solvedProblems || []).length;
+  const rivalTotalSolved = (rivalA.solvedProblems || []).length;
+  const myHardSolved = (myA.solvedProblems || []).filter((p) => (p.rating || 0) >= 1600).length;
+  const rivalHardSolved = (rivalA.solvedProblems || []).filter((p) => (p.rating || 0) >= 1600).length;
+
+  const metrics = [
+    { label: '当前比赛 Rating', myVal: myA.currentRating, rVal: rivalA.currentRating },
+    { label: '历史最高 Rating', myVal: myA.maxRating, rVal: rivalA.maxRating },
+    { label: '刷题拟合实力分', myVal: myA.practiceRating, rVal: rivalA.practiceRating },
+    { label: '累计 AC 题量', myVal: myTotalSolved, rVal: rivalTotalSolved },
+    { label: '1600+ 进阶题攻克', myVal: myHardSolved, rVal: rivalHardSolved }
+  ];
+
+  h2hBox.innerHTML = `
+    <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:14px;">
+      <div style="display:flex; align-items:center; gap:12px;">
+        ${getMiniAvatarHtml(myUser, 42)}
+        <div>
+          <div style="font-size:11px; color:#60a5fa; font-weight:700;">我方 (Me)</div>
+          <div style="font-size:16px; font-weight:800; color:${myRankInfo.color};">${myHandle}</div>
+          <div style="font-size:11.5px; color:var(--text-secondary);">${myRankInfo.title} · ${myA.currentRating}</div>
+        </div>
+      </div>
+
+      <div style="font-size:18px; font-weight:900; color:#f59e0b; letter-spacing:1.5px; padding:4px 16px; border-radius:999px; background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.3);">
+        VS
+      </div>
+
+      <div style="display:flex; align-items:center; gap:12px; text-align:right;">
+        <div>
+          <div style="font-size:11px; color:#fb7185; font-weight:700;">对手 (Rival)</div>
+          <div style="font-size:16px; font-weight:800; color:${rivalRankInfo.color};">${rivalHandle}</div>
+          <div style="font-size:11.5px; color:var(--text-secondary);">${rivalRankInfo.title} · ${rivalA.currentRating}</div>
+        </div>
+        ${getMiniAvatarHtml(rivalUser, 42)}
+      </div>
+    </div>
+
+    <div class="pk-metric-grid">
+      ${metrics.map((m) => {
+        const myWin = m.myVal >= m.rVal;
+        return `
+          <div class="pk-metric-card">
+            <div class="m-label">${m.label}</div>
+            <div class="m-vals">
+              <span style="color:${myWin ? '#60a5fa' : '#9ca3af'};">${m.myVal}</span>
+              <span style="font-size:11px; color:var(--text-muted); font-weight:500;">vs</span>
+              <span style="color:${!myWin ? '#fb7185' : '#9ca3af'};">${m.rVal}</span>
+            </div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
+
+  const myRadar = myA.radarScores || [];
+  const rivalRadar = rivalA.radarScores || [];
+
+  // 1. Dual-Player 8-Axis Radar Chart
+  const pkRadar = getOrCreateChart('chart-pk-radar');
+  if (pkRadar && myRadar.length > 0) {
+    const rivalDomainMap = {};
+    rivalRadar.forEach((d) => {
+      rivalDomainMap[d.name] = d.score;
+    });
+
+    pkRadar.setOption({
+      backgroundColor: 'transparent',
+      tooltip: {
+        backgroundColor: '#111827',
+        borderColor: '#374151',
+        textStyle: { color: '#f3f4f6', fontSize: 12 }
+      },
+      legend: {
+        bottom: 0,
+        textStyle: { color: '#e5e7eb', fontSize: 12 },
+        data: [`我 (${myHandle})`, `对手 (${rivalHandle})`]
+      },
+      radar: {
+        radius: '62%',
+        center: ['50%', '46%'],
+        indicator: myRadar.map((d) => ({ name: d.name, max: 100 })),
+        splitNumber: 4,
+        axisName: { color: '#d1d5db', fontSize: 11.5, fontWeight: 600 },
+        splitLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } },
+        splitArea: {
+          areaStyle: {
+            color: ['rgba(59,130,246,0.02)', 'rgba(59,130,246,0.05)']
+          }
+        },
+        axisLine: { lineStyle: { color: 'rgba(255,255,255,0.1)' } }
+      },
+      series: [
+        {
+          type: 'radar',
+          data: [
+            {
+              value: myRadar.map((d) => d.score),
+              name: `我 (${myHandle})`,
+              symbolSize: 6,
+              lineStyle: { width: 2.5, color: '#3b82f6' },
+              itemStyle: { color: '#3b82f6' },
+              areaStyle: { color: 'rgba(59, 130, 246, 0.28)' }
+            },
+            {
+              value: myRadar.map((d) => rivalDomainMap[d.name] || 20),
+              name: `对手 (${rivalHandle})`,
+              symbolSize: 6,
+              lineStyle: { width: 2.5, color: '#f43f5e' },
+              itemStyle: { color: '#f43f5e' },
+              areaStyle: { color: 'rgba(244, 63, 94, 0.24)' }
+            }
+          ]
+        }
+      ]
+    });
+  }
+
+  // 2. Tag Advantage vs Disadvantage Box
+  const tagDiffBox = document.getElementById('pk-tag-diff-box');
+  if (tagDiffBox) {
+    const diffs = myRadar.map((d) => {
+      const rObj = rivalRadar.find((x) => x.name === d.name) || { score: 20, solvedCount: 0, avgRating: 1200 };
+      return {
+        name: d.name,
+        myScore: d.score,
+        rScore: rObj.score,
+        mySolved: d.solvedCount || 0,
+        rSolved: rObj.solvedCount || 0,
+        myAvg: d.avgRating || 1200,
+        rAvg: rObj.avgRating || 1200,
+        gap: d.score - rObj.score
+      };
+    }).sort((a, b) => b.gap - a.gap);
+
+    tagDiffBox.innerHTML = diffs.map((item) => {
+      const isLead = item.gap >= 0;
+      const badgeHtml = item.gap >= 8
+        ? `<span class="badge badge-blue">我方领先 +${item.gap}分</span>`
+        : item.gap <= -8
+          ? `<span class="badge badge-rose">对手领先 +${Math.abs(item.gap)}分</span>`
+          : `<span class="badge badge-amber">旗鼓相当 (${item.gap >= 0 ? '+' + item.gap : item.gap})</span>`;
+
+      return `
+        <div style="padding:9px 12px; border-radius:8px; background:rgba(255,255,255,0.025); border:1px solid var(--border-subtle);">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+            <span style="font-weight:700; font-size:12.5px; color:#f3f4f6;">${item.name}</span>
+            ${badgeHtml}
+          </div>
+          <div style="display:flex; justify-content:space-between; font-size:11.5px; color:var(--text-secondary);">
+            <span><b style="color:#60a5fa;">我</b>: <b>${item.myScore}</b>分 (${item.mySolved}题 · 均难 ${item.myAvg})</span>
+            <span><b style="color:#fb7185;">对手</b>: <b>${item.rScore}</b>分 (${item.rSolved}题 · 均难 ${item.rAvg})</span>
+          </div>
+          <div style="margin-top:6px; height:5px; background:rgba(244,63,94,0.35); border-radius:999px; overflow:hidden;">
+            <div style="width:${Math.max(10, Math.min(90, Math.round((item.myScore / Math.max(1, item.myScore + item.rScore)) * 100)))}%; height:100%; background:${isLead ? '#3b82f6' : '#60a5fa'};"></div>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  // 3. Problems Rival Solved That I Haven't Solved Yet (4 columns matching index.html)
+  const recTbody = document.getElementById('pk-recommend-tbody');
+  if (recTbody) {
+    const mySolvedSet = new Set(
+      (myA.allProblems || []).filter((p) => p.solved).map((p) => p.id)
+    );
+    const targetRating = myA.currentRating || 1500;
+
+    const rivalUniqueSolved = (rivalA.allProblems || [])
+      .filter((p) => p.solved && !mySolvedSet.has(p.id) && (p.rating || 0) > 0)
+      .sort((a, b) => {
+        const da = Math.abs(a.rating - (targetRating + 100));
+        const db = Math.abs(b.rating - (targetRating + 100));
+        return da - db;
+      })
+      .slice(0, 10);
+
+    recTbody.innerHTML = rivalUniqueSolved.map((p) => {
+      const rColor = getCfRankInfo(p.rating).color;
+      const tagsHtml = (p.tags || []).slice(0, 2).map((t) => `<span class="tag-pill">${formatTagName(t)}</span>`).join('');
+
+      return `
+        <tr>
+          <td style="font-weight:700; color:var(--text-secondary);">${p.id}</td>
+          <td>
+            <button class="link-btn problem-link" data-cid="${p.contestId}" data-idx="${p.index}">
+              ${p.name} ↗
+            </button>
+          </td>
+          <td><span style="color:${rColor}; font-weight:800;">${p.rating}</span></td>
+          <td>${tagsHtml}</td>
+        </tr>
+      `;
+    }).join('') || `<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:16px;">对手 AC 的题目您均已攻克，或暂无差异题目</td></tr>`;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Tab 7: Account & Settings
    -------------------------------------------------------------------------- */
 function renderSettingsTab() {
   // Populate account switcher in sidebar and settings list
@@ -1678,6 +2298,26 @@ function renderSettingsTab() {
 
   document.getElementById('settings-apikey-input').value = state.config.apiKey || '';
   document.getElementById('settings-apisecret-input').value = state.config.apiSecret || '';
+
+  const verifyBox = document.getElementById('api-verify-status-box');
+  if (verifyBox) {
+    if (state.config.apiKey && state.config.apiSecret) {
+      verifyBox.style.display = 'block';
+      if (state.friendsSource === 'api') {
+        verifyBox.style.background = 'rgba(16, 185, 129, 0.12)';
+        verifyBox.style.border = '1px solid rgba(16, 185, 129, 0.35)';
+        verifyBox.style.color = '#34d399';
+        verifyBox.innerHTML = `<strong>API Key 签名已认证通过</strong>：已成功解锁 <code>user.friends</code> 官方好友列表与在线状态同步（共 ${state.friendsList.length} 位好友）。`;
+      } else {
+        verifyBox.style.background = 'rgba(59, 130, 246, 0.12)';
+        verifyBox.style.border = '1px solid rgba(59, 130, 246, 0.35)';
+        verifyBox.style.color = '#60a5fa';
+        verifyBox.innerHTML = `<strong>已保存 API Key 配置</strong>：点击下方「保存并验证 API Key」可立即测试 SHA-512 签名连通性并拉取官方好友。`;
+      }
+    } else {
+      verifyBox.style.display = 'none';
+    }
+  }
 
   const listBox = document.getElementById('saved-accounts-list');
   listBox.innerHTML = accounts.map((acc) => {
@@ -1696,6 +2336,8 @@ function renderSettingsTab() {
       </div>
     `;
   }).join('');
+
+  renderErrorLogsBox();
 }
 
 /* ==========================================================================
@@ -1759,6 +2401,11 @@ async function loadAndSyncHandle(handle, forceRefresh = false) {
     setSyncStatus(`已同步: ${canonicalHandle}`, false);
     showToast(`账号 ${canonicalHandle} 数据同步成功！`);
   } catch (err) {
+    recordErrorLog({
+      source: 'loadAndSyncHandle',
+      message: err.message || String(err),
+      stack: err.stack || ''
+    });
     setSyncStatus('同步失败', false);
     showToast(err.message || '同步 Codeforces 数据失败', true);
   }
@@ -1830,6 +2477,31 @@ window.addEventListener('DOMContentLoaded', async () => {
     document.getElementById(id).addEventListener('change', updateSimulatorView);
   });
 
+  // Friends & 1v1 PK controls
+  const syncFriendsBtn = document.getElementById('btn-sync-friends');
+  if (syncFriendsBtn) {
+    syncFriendsBtn.addEventListener('click', () => syncOfficialFriends(false));
+  }
+
+  const pkFriendSelect = document.getElementById('pk-friend-select');
+  const pkRivalInput = document.getElementById('pk-rival-input');
+  if (pkFriendSelect) {
+    pkFriendSelect.addEventListener('change', (e) => {
+      if (e.target.value) {
+        if (pkRivalInput) pkRivalInput.value = e.target.value;
+        loadRivalForPk(e.target.value);
+      }
+    });
+  }
+
+  const startPkBtn = document.getElementById('btn-start-pk');
+  if (startPkBtn && pkRivalInput) {
+    startPkBtn.addEventListener('click', () => loadRivalForPk(pkRivalInput.value));
+    pkRivalInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') loadRivalForPk(pkRivalInput.value);
+    });
+  }
+
   // Settings tab actions
   const settingsHandleInput = document.getElementById('settings-handle-input');
   document.getElementById('settings-login-btn').addEventListener('click', () => {
@@ -1851,19 +2523,77 @@ window.addEventListener('DOMContentLoaded', async () => {
     if (window.cfDesktop) {
       await window.cfDesktop.saveConfig(state.config);
     }
-    renderAllViews();
-    showToast('API Key 密钥配置已保存在本机！');
+    if (state.config.apiKey && state.config.apiSecret) {
+      await syncOfficialFriends(false);
+    } else {
+      state.friendsSource = 'demo';
+      state.friendsList = (state.rawData && state.rawData.demoFriends) || [];
+      renderAllViews();
+      showToast('已清空 API Key 配置');
+    }
   });
 
   document.getElementById('settings-open-cfapi-btn').addEventListener('click', () => {
     openExternalUrl('https://codeforces.com/settings/api');
   });
 
-  // Global delegated click handlers (problem links, contest links, tag jumps, account buttons)
+  // Error diagnostic log copy & clear buttons
+  const copyLogsBtn = document.getElementById('btn-copy-error-logs');
+  if (copyLogsBtn) {
+    copyLogsBtn.addEventListener('click', async () => {
+      if (!state.errorLogs || state.errorLogs.length === 0) {
+        showToast('当前暂无报错日志可复制');
+        return;
+      }
+      const text = state.errorLogs.map((l) => `[${l.time}] [${l.source}] (Handle: ${l.handle})\nMessage: ${l.message}${l.stack ? '\nStack: ' + l.stack : ''}`).join('\n\n---\n\n');
+      try {
+        await navigator.clipboard.writeText(text);
+        showToast(`已复制全部 ${state.errorLogs.length} 条报错诊断日志到剪贴板`);
+      } catch (_e) {
+        showToast('复制失败，请手动选中复制', true);
+      }
+    });
+  }
+
+  const clearLogsBtn = document.getElementById('btn-clear-error-logs');
+  if (clearLogsBtn) {
+    clearLogsBtn.addEventListener('click', async () => {
+      state.errorLogs = [];
+      if (window.cfDesktop && window.cfDesktop.clearErrorLogs) {
+        await window.cfDesktop.clearErrorLogs();
+      }
+      renderErrorLogsBox();
+      showToast('已清空报错诊断日志');
+    });
+  }
+
+  // Global delegated click handlers (problem links, contest links, tag jumps, account buttons, PK buttons)
   document.body.addEventListener('click', async (e) => {
     const gotoBtn = e.target.closest('[data-goto-tab]');
     if (gotoBtn) {
       switchTab(gotoBtn.dataset.gotoTab);
+      return;
+    }
+
+    const pkHandleBtn = e.target.closest('[data-pk-handle]');
+    if (pkHandleBtn) {
+      const h = pkHandleBtn.dataset.pkHandle;
+      if (h) {
+        switchTab('tab-friends');
+        await loadRivalForPk(h);
+        const h2hEl = document.getElementById('pk-h2h-summary');
+        if (h2hEl) h2hEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      return;
+    }
+
+    const switchFriendBtn = e.target.closest('[data-switch-friend]');
+    if (switchFriendBtn) {
+      const h = switchFriendBtn.dataset.switchFriend;
+      if (h) {
+        switchTab('tab-overview');
+        loadAndSyncHandle(h, false);
+      }
       return;
     }
 
@@ -1940,6 +2670,11 @@ window.addEventListener('DOMContentLoaded', async () => {
 
   // Initial load from saved config / cache / demo dataset
   if (window.cfDesktop) {
+    if (window.cfDesktop.getErrorLogs) {
+      state.errorLogs = (await window.cfDesktop.getErrorLogs()) || [];
+      renderErrorLogsBox();
+    }
+
     const savedConfig = await window.cfDesktop.loadConfig();
     if (savedConfig) state.config = savedConfig;
 
@@ -1952,5 +2687,10 @@ window.addEventListener('DOMContentLoaded', async () => {
     } else {
       await loadAndSyncHandle(state.config.activeHandle || 'Demo_Coder', false);
     }
+
+    // Sync friends list (uses official API if API key is configured, otherwise demo friends)
+    await syncOfficialFriends(true);
+    // Preload default 1v1 PK rival so the radar chart is immediately ready
+    await loadRivalForPk(state.pkRivalHandle || 'Demo_Teammate_DP');
   }
 });

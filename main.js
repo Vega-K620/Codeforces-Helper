@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const https = require('https');
+const http = require('http');
 
 let mainWindow = null;
 
@@ -28,6 +29,30 @@ function getGlobalCachePath(name) {
   return path.join(getDataDir(), `global_${name}.json`);
 }
 
+function getErrorLogPath() {
+  return path.join(getDataDir(), 'error_logs.json');
+}
+
+function appendErrorLog(entry) {
+  try {
+    const file = getErrorLogPath();
+    let list = readJsonSafe(file, []);
+    if (!Array.isArray(list)) list = [];
+    list.unshift({
+      time: new Date().toLocaleString('zh-CN', { hour12: false }),
+      source: entry.source || 'Renderer',
+      message: String(entry.message || 'Unknown error'),
+      stack: String(entry.stack || ''),
+      context: String(entry.context || '')
+    });
+    if (list.length > 80) list = list.slice(0, 80);
+    writeJsonSafe(file, list);
+    return list;
+  } catch (e) {
+    return [];
+  }
+}
+
 function readJsonSafe(filePath, fallback = null) {
   try {
     if (fs.existsSync(filePath)) {
@@ -50,16 +75,97 @@ function writeJsonSafe(filePath, data) {
   }
 }
 
-// Sleep utility for CF API rate limiting
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// Normalize Codeforces Avatar URL (handles //userpic..., http://..., relative paths, etc.)
+function normalizeAvatarUrl(rawUrl) {
+  if (!rawUrl || typeof rawUrl !== 'string') return '';
+  let u = rawUrl.trim();
+  if (!u) return '';
+  if (u.startsWith('//')) {
+    u = 'https:' + u;
+  } else if (u.startsWith('/')) {
+    u = 'https://codeforces.com' + u;
+  } else if (u.startsWith('http://')) {
+    u = u.replace(/^http:\/\//i, 'https://');
+  }
+  return u;
+}
+
+// Download avatar image in Node main process (follows redirects, forces IPv4 to avoid Windows IPv6 stall, & bypasses Referer/CORS blocks)
+function fetchImageAsDataUrl(rawUrl, redirectCount = 0) {
+  return new Promise((resolve) => {
+    const url = normalizeAvatarUrl(rawUrl);
+    if (!url || redirectCount > 3) {
+      resolve('');
+      return;
+    }
+
+    const client = url.startsWith('https') ? https : http;
+    const req = client.get(
+      url,
+      {
+        family: 4,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) CodeforcesHelper/1.1',
+          'Referer': 'https://codeforces.com/',
+          'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8'
+        },
+        timeout: 12000
+      },
+      (res) => {
+        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          res.resume();
+          const nextUrl = res.headers.location.startsWith('http')
+            ? res.headers.location
+            : new URL(res.headers.location, url).toString();
+          fetchImageAsDataUrl(nextUrl, redirectCount + 1).then(resolve);
+          return;
+        }
+        if (res.statusCode !== 200) {
+          res.resume();
+          resolve('');
+          return;
+        }
+        const contentType = res.headers['content-type'] || 'image/jpeg';
+        const chunks = [];
+        res.on('data', (c) => chunks.push(c));
+        res.on('end', () => {
+          try {
+            const buf = Buffer.concat(chunks);
+            if (buf.length < 64) {
+              resolve('');
+              return;
+            }
+            resolve(`data:${contentType};base64,${buf.toString('base64')}`);
+          } catch (e) {
+            resolve('');
+          }
+        });
+      }
+    );
+
+    req.on('timeout', () => {
+      req.destroy();
+      resolve('');
+    });
+    req.on('error', () => {
+      resolve('');
+    });
+  });
+}
+
 // Build Codeforces API URL (supports both public & SHA-512 signed API Key requests)
-function buildCfApiUrl(methodName, params = {}, apiKey = '', apiSecret = '') {
+function buildCfApiUrl(methodName, params = {}, apiKey = '', apiSecret = '', requireAuth = false) {
   const queryParams = { ...params };
   const cleanKey = (apiKey || '').trim();
   const cleanSecret = (apiSecret || '').trim();
+
+  if (requireAuth && (!cleanKey || !cleanSecret)) {
+    throw new Error('该功能需要配置 Codeforces API Key 与 Secret 才能调用');
+  }
 
   if (cleanKey && cleanSecret) {
     queryParams.apiKey = cleanKey;
@@ -74,16 +180,20 @@ function buildCfApiUrl(methodName, params = {}, apiKey = '', apiSecret = '') {
         return 0;
       });
 
-    const paramString = sortedEntries
+    // Note: Codeforces apiSig requires raw key=value pairs in toSign, and URL-encoded in query string
+    const rawParamString = sortedEntries
+      .map(([k, v]) => `${k}=${v}`)
+      .join('&');
+    const encodedParamString = sortedEntries
       .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
       .join('&');
 
     const rand = crypto.randomBytes(3).toString('hex'); // 6 hex chars
-    const toSign = `${rand}/${methodName}?${paramString}#${cleanSecret}`;
+    const toSign = `${rand}/${methodName}?${rawParamString}#${cleanSecret}`;
     const hash = crypto.createHash('sha512').update(toSign, 'utf8').digest('hex');
     const apiSig = `${rand}${hash}`;
 
-    return `https://codeforces.com/api/${methodName}?${paramString}&apiSig=${apiSig}`;
+    return `https://codeforces.com/api/${methodName}?${encodedParamString}&apiSig=${apiSig}`;
   } else {
     const paramString = Object.entries(queryParams)
       .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
@@ -93,15 +203,22 @@ function buildCfApiUrl(methodName, params = {}, apiKey = '', apiSecret = '') {
 }
 
 // Perform HTTPS GET request to Codeforces API with retry
-function requestCfApi(methodName, params = {}, apiKey = '', apiSecret = '', retries = 2) {
+function requestCfApi(methodName, params = {}, apiKey = '', apiSecret = '', retries = 2, requireAuth = false) {
   return new Promise((resolve, reject) => {
-    const url = buildCfApiUrl(methodName, params, apiKey, apiSecret);
+    let url = '';
+    try {
+      url = buildCfApiUrl(methodName, params, apiKey, apiSecret, requireAuth);
+    } catch (err) {
+      reject(err);
+      return;
+    }
 
     const req = https.get(
       url,
       {
+        family: 4,
         headers: {
-          'User-Agent': 'CodeforcesHelperDesktop/1.0 (Electron Windows Client)',
+          'User-Agent': 'CodeforcesHelperDesktop/1.1 (Electron Windows Client)',
           'Accept': 'application/json'
         },
         timeout: 20000
@@ -120,14 +237,25 @@ function requestCfApi(methodName, params = {}, apiKey = '', apiSecret = '', retr
               const comment = parsed.comment || `Codeforces API returned ${parsed.status}`;
               // If rate limited, wait and retry
               if (retries > 0 && /limit|Call limit/i.test(comment)) {
-                await sleep(1500);
+                await sleep(1600);
                 try {
-                  const retryRes = await requestCfApi(methodName, params, apiKey, apiSecret, retries - 1);
+                  const retryRes = await requestCfApi(methodName, params, apiKey, apiSecret, retries - 1, requireAuth);
                   resolve(retryRes);
                 } catch (e) {
                   reject(e);
                 }
                 return;
+              }
+              // If optional API key failed on a public method, fallback to public call
+              if (!requireAuth && apiKey && /apiKey|signature|Incorrect/i.test(comment)) {
+                try {
+                  const pubRes = await requestCfApi(methodName, params, '', '', retries - 1, false);
+                  resolve(pubRes);
+                  return;
+                } catch (e) {
+                  reject(e);
+                  return;
+                }
               }
               reject(new Error(comment));
             }
@@ -135,7 +263,7 @@ function requestCfApi(methodName, params = {}, apiKey = '', apiSecret = '', retr
             if (retries > 0) {
               await sleep(1200);
               try {
-                const retryRes = await requestCfApi(methodName, params, apiKey, apiSecret, retries - 1);
+                const retryRes = await requestCfApi(methodName, params, apiKey, apiSecret, retries - 1, requireAuth);
                 resolve(retryRes);
               } catch (e) {
                 reject(e);
@@ -157,7 +285,7 @@ function requestCfApi(methodName, params = {}, apiKey = '', apiSecret = '', retr
       if (retries > 0) {
         await sleep(1200);
         try {
-          const retryRes = await requestCfApi(methodName, params, apiKey, apiSecret, retries - 1);
+          const retryRes = await requestCfApi(methodName, params, apiKey, apiSecret, retries - 1, requireAuth);
           resolve(retryRes);
         } catch (e) {
           reject(e);
@@ -186,11 +314,12 @@ function generateDemoDataset(handle = 'Demo_Coder') {
     rating: 1685,
     maxRank: 'expert',
     maxRating: 1742,
-    lastOnlineTimeSeconds: nowSec - 600,
+    lastOnlineTimeSeconds: nowSec - 180,
     registrationTimeSeconds: nowSec - 540 * daySec,
     friendOfCount: 68,
     avatar: '',
-    titlePhoto: ''
+    titlePhoto: '',
+    avatarDataUrl: ''
   };
 
   // Generate 22 historical contests
@@ -236,21 +365,17 @@ function generateDemoDataset(handle = 'Demo_Coder') {
     };
   });
 
-  // Tag profile configuration to visibly demonstrate Strengths, Solid, Weaknesses, and Blind Spots
+  // Tag profile configuration
   const tagProfiles = [
-    // Strengths: high pass rate, high rating
     { tags: ['greedy', 'sorting'], baseRating: 1700, count: 62, failRatio: 0.35, stuckCount: 1, titlePrefix: 'Optimal Sequence' },
     { tags: ['binary search', 'two pointers'], baseRating: 1750, count: 48, failRatio: 0.38, stuckCount: 1, titlePrefix: 'K-th Threshold' },
     { tags: ['implementation', 'constructive algorithms'], baseRating: 1650, count: 55, failRatio: 0.42, stuckCount: 2, titlePrefix: 'Matrix Construction' },
-    // Solid (Comfort Zone): good count, but lower difficulty average
     { tags: ['math', 'number theory'], baseRating: 1350, count: 52, failRatio: 0.65, stuckCount: 3, titlePrefix: 'Modular GCD' },
     { tags: ['brute force', 'bitmasks'], baseRating: 1300, count: 36, failRatio: 0.55, stuckCount: 2, titlePrefix: 'Subset Xor' },
-    // Weaknesses (Needs Improvement): high failure rate, more stuck problems, lower effective rating
     { tags: ['dp'], baseRating: 1450, count: 38, failRatio: 1.85, stuckCount: 9, titlePrefix: 'Interval Partition DP' },
     { tags: ['graphs', 'dfs and similar', 'shortest paths'], baseRating: 1420, count: 29, failRatio: 1.70, stuckCount: 7, titlePrefix: 'Directed Cycle Network' },
     { tags: ['trees', 'dsu'], baseRating: 1480, count: 24, failRatio: 1.55, stuckCount: 6, titlePrefix: 'Weighted Tree Diameter' },
     { tags: ['data structures'], baseRating: 1500, count: 26, failRatio: 1.60, stuckCount: 6, titlePrefix: 'Dynamic Segment Queries' },
-    // Blind Spots: very few solved
     { tags: ['strings', 'hashing'], baseRating: 1400, count: 6, failRatio: 1.40, stuckCount: 3, titlePrefix: 'Palindrome Automaton' },
     { tags: ['combinatorics', 'probabilities'], baseRating: 1500, count: 5, failRatio: 1.50, stuckCount: 3, titlePrefix: 'Expected Permutations' },
     { tags: ['geometry'], baseRating: 1400, count: 3, failRatio: 1.80, stuckCount: 2, titlePrefix: 'Convex Polygon Area' },
@@ -265,7 +390,6 @@ function generateDemoDataset(handle = 'Demo_Coder') {
   const langs = ['GNU C++20 (64)', 'GNU C++20 (64)', 'GNU C++20 (64)', 'GNU C++17', 'PyPy 3-64'];
 
   tagProfiles.forEach((prof, pIdx) => {
-    // Solved problems
     for (let i = 0; i < prof.count; i++) {
       problemSeed++;
       const cId = 1750 + ((problemSeed * 7) % 300);
@@ -273,13 +397,11 @@ function generateDemoDataset(handle = 'Demo_Coder') {
       const ratingOffsets = [-300, -200, -100, 0, 0, 100, 100, 200, 300];
       const probRating = Math.max(800, Math.min(2600, prof.baseRating + ratingOffsets[(i * 3 + pIdx) % ratingOffsets.length]));
       const probName = `${prof.titlePrefix} #${i + 1}`;
-      // Spread timestamps across last 320 days, with denser recent activity
       const daysAgo = i < prof.count * 0.35
         ? Math.floor((i * 27) % 30)
         : Math.floor(30 + ((i * 43 + pIdx * 19) % 290));
       const baseTime = nowSec - daysAgo * daySec - ((i * 3600) % 43200);
 
-      // Determine how many failed submissions happened before AC
       const numFails = Math.floor(prof.failRatio * ((i % 3 === 0) ? 2 : (i % 2 === 0 ? 1 : 0)));
       for (let f = 0; f < numFails; f++) {
         submissions.push({
@@ -308,7 +430,6 @@ function generateDemoDataset(handle = 'Demo_Coder') {
         });
       }
 
-      // AC submission
       submissions.push({
         id: subId++,
         contestId: cId,
@@ -335,7 +456,6 @@ function generateDemoDataset(handle = 'Demo_Coder') {
       });
     }
 
-    // Stuck / Unsolved problems (attempted but never AC)
     for (let s = 0; s < prof.stuckCount; s++) {
       problemSeed++;
       const cId = 1880 + ((problemSeed * 11) % 180);
@@ -375,7 +495,6 @@ function generateDemoDataset(handle = 'Demo_Coder') {
     }
   });
 
-  // Sort submissions newest first (like Codeforces user.status)
   submissions.sort((a, b) => b.creationTimeSeconds - a.creationTimeSeconds);
 
   const upcomingContests = [
@@ -417,8 +536,52 @@ function generateDemoDataset(handle = 'Demo_Coder') {
     }
   ];
 
-  // Sample curated high-quality problems for recommendation fallback
-  const curatedProblemPool = getCuratedProblemPool();
+  const demoFriends = [
+    {
+      handle: 'Demo_Teammate_DP',
+      rating: 1845,
+      maxRating: 1912,
+      rank: 'expert',
+      maxRank: 'candidate master',
+      isOnline: true,
+      lastOnlineTimeSeconds: nowSec - 120,
+      friendOfCount: 95,
+      organization: 'ACM-ICPC Training Team'
+    },
+    {
+      handle: 'GraphMaster_Lin',
+      rating: 1760,
+      maxRating: 1795,
+      rank: 'expert',
+      maxRank: 'expert',
+      isOnline: true,
+      lastOnlineTimeSeconds: nowSec - 300,
+      friendOfCount: 52,
+      organization: 'ACM-ICPC Training Team'
+    },
+    {
+      handle: 'MathWizard_Zero',
+      rating: 1620,
+      maxRating: 1690,
+      rank: 'expert',
+      maxRank: 'expert',
+      isOnline: false,
+      lastOnlineTimeSeconds: nowSec - 7200,
+      friendOfCount: 41,
+      organization: 'ACM-ICPC Training Team'
+    },
+    {
+      handle: 'SpeedSolver_Kai',
+      rating: 1535,
+      maxRating: 1588,
+      rank: 'specialist',
+      maxRank: 'specialist',
+      isOnline: false,
+      lastOnlineTimeSeconds: nowSec - 28800,
+      friendOfCount: 29,
+      organization: 'ACM-ICPC Training Team'
+    }
+  ];
 
   return {
     isDemo: true,
@@ -427,11 +590,30 @@ function generateDemoDataset(handle = 'Demo_Coder') {
     ratingHistory,
     submissions,
     upcomingContests,
-    problemPool: curatedProblemPool
+    demoFriends,
+    problemPool: getCuratedProblemPool()
   };
 }
 
-// Built-in high-quality CF problem pool across all tags and ratings (used when offline or before full catalog sync)
+// Generate a synthetic rival dataset for Demo_Teammate_DP so Demo mode can also test 1v1 Radar PK offline
+function generateDemoRivalDataset(handle = 'Demo_Teammate_DP') {
+  const base = generateDemoDataset(handle);
+  base.userInfo.handle = handle;
+  base.userInfo.rating = 1845;
+  base.userInfo.maxRating = 1912;
+  base.userInfo.rank = 'expert';
+  // Flip strengths: make DP, Graphs, Trees very strong for the rival
+  base.submissions.forEach((s) => {
+    const tags = (s.problem && s.problem.tags) || [];
+    if (tags.includes('dp') || tags.includes('graphs') || tags.includes('trees')) {
+      s.verdict = 'OK';
+      s.problem.rating = Math.min(2400, (s.problem.rating || 1500) + 200);
+    }
+  });
+  return base;
+}
+
+// Built-in high-quality CF problem pool
 function getCuratedProblemPool() {
   return [
     { contestId: 1996, index: 'D', name: 'Fun', rating: 1500, tags: ['brute force', 'math', 'number theory'], solvedCount: 14200 },
@@ -444,13 +626,13 @@ function getCuratedProblemPool() {
     { contestId: 1971, index: 'F', name: 'Circle Perimeter', rating: 1600, tags: ['binary search', 'brute force', 'geometry', 'math', 'two pointers'], solvedCount: 12400 },
     { contestId: 1968, index: 'D', name: 'Permutation Game', rating: 1300, tags: ['brute force', 'dfs and similar', 'games', 'graphs', 'greedy'], solvedCount: 19200 },
     { contestId: 1955, index: 'E', name: 'Long Inversions', rating: 1700, tags: ['bitmasks', 'brute force', 'data structures', 'greedy', 'strings'], solvedCount: 10300 },
-    { contestId: 1950, index: 'E', name: 'Nearly Shortest Repeating Substring', rating: 1500, tags: ['brute force', 'Implementation', 'number theory', 'strings'], solvedCount: 14900 },
+    { contestId: 1950, index: 'E', name: 'Nearly Shortest Repeating Substring', rating: 1500, tags: ['brute force', 'implementation', 'number theory', 'strings'], solvedCount: 14900 },
     { contestId: 1948, index: 'C', name: 'Arrow Path', rating: 1300, tags: ['dfs and similar', 'dp', 'graphs', 'shortest paths'], solvedCount: 18700 },
     { contestId: 1941, index: 'E', name: 'Rudolf and k Bridges', rating: 1600, tags: ['binary search', 'data structures', 'dp', 'two pointers'], solvedCount: 11800 },
     { contestId: 1933, index: 'E', name: 'Turtle vs. Rabbit Race: Optimal Trainings', rating: 1500, tags: ['binary search', 'implementation', 'math', 'ternary search'], solvedCount: 13600 },
     { contestId: 1931, index: 'E', name: 'Anna and the Valentine\'s Day Gift', rating: 1400, tags: ['games', 'greedy', 'math', 'sortings'], solvedCount: 17600 },
-    { contestId: 1927, index: 'D', name: 'Find the Different Ones!', rating: 1300, tags: ['binary search', 'brute force', ' constructive algorithms', 'data structures', 'dp', 'greedy', 'two pointers'], solvedCount: 22100 },
-    { contestId: 1926, index: 'E', name: 'Vlad and an Odd Ordering', rating: 1500, tags: ['Air', 'binary search', 'bitmasks', ' combinatorics', 'dp', 'math', 'number theory'], solvedCount: 14100 },
+    { contestId: 1927, index: 'D', name: 'Find the Different Ones!', rating: 1300, tags: ['binary search', 'brute force', 'constructive algorithms', 'data structures', 'dp', 'greedy', 'two pointers'], solvedCount: 22100 },
+    { contestId: 1926, index: 'E', name: 'Vlad and an Odd Ordering', rating: 1500, tags: ['binary search', 'bitmasks', 'combinatorics', 'dp', 'math', 'number theory'], solvedCount: 14100 },
     { contestId: 1921, index: 'E', name: 'Eat the Chip', rating: 1600, tags: ['brute force', 'games', 'greedy', 'math'], solvedCount: 11200 },
     { contestId: 1915, index: 'F', name: 'Greetings', rating: 1500, tags: ['data structures', 'divide and conquer', 'sortings'], solvedCount: 15800 },
     { contestId: 1914, index: 'E2', name: 'Game with Marbles (Hard Version)', rating: 1400, tags: ['games', 'greedy', 'sortings'], solvedCount: 16900 },
@@ -501,8 +683,8 @@ function getCuratedProblemPool() {
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 1400,
-    height: 880,
+    width: 1420,
+    height: 890,
     minWidth: 1140,
     minHeight: 720,
     frame: false,
@@ -523,7 +705,6 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
-  // Window controls
   ipcMain.handle('window:minimize', () => {
     if (mainWindow) mainWindow.minimize();
   });
@@ -545,7 +726,6 @@ app.whenReady().then(() => {
     if (mainWindow) mainWindow.close();
   });
 
-  // External link handler
   ipcMain.handle('shell:openExternal', async (_event, url) => {
     if (typeof url === 'string' && /^https?:\/\//i.test(url)) {
       await shell.openExternal(url);
@@ -554,7 +734,6 @@ app.whenReady().then(() => {
     return false;
   });
 
-  // Load app config
   ipcMain.handle('storage:loadConfig', () => {
     const defaultConfig = {
       activeHandle: 'Demo_Coder',
@@ -563,32 +742,128 @@ app.whenReady().then(() => {
       ],
       apiKey: '',
       apiSecret: '',
+      apiVerified: false,
       targetRating: 1900
     };
     const saved = readJsonSafe(getConfigPath(), null);
     return saved ? { ...defaultConfig, ...saved } : defaultConfig;
   });
 
-  // Save app config
   ipcMain.handle('storage:saveConfig', (_event, config) => {
     return writeJsonSafe(getConfigPath(), config);
   });
 
-  // Get demo dataset
   ipcMain.handle('cf:getDemoData', (_event, handle) => {
     return generateDemoDataset(handle || 'Demo_Coder');
   });
 
-  // Get cached user data if available
-  ipcMain.handle('cf:getCachedUser', (_event, handle) => {
+  ipcMain.handle('cf:getCachedUser', async (_event, handle) => {
     if (!handle || handle === 'Demo_Coder') {
       return generateDemoDataset('Demo_Coder');
     }
-    return readJsonSafe(getUserCachePath(handle), null);
+    if (handle === 'Demo_Teammate_DP') {
+      return generateDemoRivalDataset('Demo_Teammate_DP');
+    }
+    const cacheFile = getUserCachePath(handle);
+    const cached = readJsonSafe(cacheFile, null);
+    if (cached && cached.userInfo) {
+      const rawAvatar = cached.userInfo.avatar || cached.userInfo.titlePhoto || '';
+      const rawTitle = cached.userInfo.titlePhoto || cached.userInfo.avatar || '';
+      cached.userInfo.avatar = normalizeAvatarUrl(rawAvatar);
+      cached.userInfo.titlePhoto = normalizeAvatarUrl(rawTitle);
+      if (!cached.userInfo.avatarDataUrl && (cached.userInfo.avatar || cached.userInfo.titlePhoto)) {
+        cached.userInfo.avatarDataUrl =
+          (await fetchImageAsDataUrl(cached.userInfo.avatar)) ||
+          (await fetchImageAsDataUrl(cached.userInfo.titlePhoto));
+        if (cached.userInfo.avatarDataUrl) {
+          writeJsonSafe(cacheFile, cached);
+        }
+      }
+    }
+    return cached;
+  });
+
+  // Error & Diagnostic Log IPC Handlers
+  ipcMain.handle('log:append', (_event, entry) => {
+    return appendErrorLog(entry || {});
+  });
+
+  ipcMain.handle('log:getAll', () => {
+    const list = readJsonSafe(getErrorLogPath(), []);
+    return Array.isArray(list) ? list : [];
+  });
+
+  ipcMain.handle('log:clear', () => {
+    writeJsonSafe(getErrorLogPath(), []);
+    return [];
+  });
+
+  // Verify API Key & Fetch Friends List (API-Key Exclusive Endpoint: user.friends)
+  ipcMain.handle('cf:fetchFriends', async (_event, { apiKey, apiSecret }) => {
+    const cleanKey = (apiKey || '').trim();
+    const cleanSecret = (apiSecret || '').trim();
+    if (!cleanKey || !cleanSecret) {
+      return {
+        source: 'demo',
+        friends: generateDemoDataset('Demo_Coder').demoFriends
+      };
+    }
+
+    try {
+      // 1. Fetch all friends and online friends via signed API Key requests
+      const allFriendHandles = await requestCfApi('user.friends', { onlyOnline: 'false' }, cleanKey, cleanSecret, 1, true);
+      await sleep(400);
+      const onlineFriendHandles = await requestCfApi('user.friends', { onlyOnline: 'true' }, cleanKey, cleanSecret, 1, true);
+      const onlineSet = new Set((onlineFriendHandles || []).map((h) => String(h).toLowerCase()));
+
+      if (!Array.isArray(allFriendHandles) || allFriendHandles.length === 0) {
+        return { source: 'api', friends: [] };
+      }
+
+      // 2. Fetch detailed user.info for up to 50 friends
+      await sleep(400);
+      const handlesParam = allFriendHandles.slice(0, 50).join(';');
+      const friendsInfo = await requestCfApi('user.info', { handles: handlesParam }, cleanKey, cleanSecret, 1, false);
+
+      // 3. Normalize avatar URLs and download avatars for friends in parallel (up to 20 to keep it fast)
+      const enriched = await Promise.all(
+        (friendsInfo || []).map(async (f, idx) => {
+          const rawAvatar = f.avatar || f.titlePhoto || '';
+          const avatarUrl = normalizeAvatarUrl(rawAvatar);
+          let avatarDataUrl = '';
+          if (idx < 20 && avatarUrl) {
+            avatarDataUrl = await fetchImageAsDataUrl(avatarUrl);
+          }
+          return {
+            ...f,
+            avatar: avatarUrl,
+            titlePhoto: normalizeAvatarUrl(f.titlePhoto || rawAvatar),
+            avatarDataUrl,
+            isOnline: onlineSet.has(String(f.handle || '').toLowerCase())
+          };
+        })
+      );
+
+      // Sort online first, then by rating descending
+      enriched.sort((a, b) => {
+        if (a.isOnline !== b.isOnline) return a.isOnline ? -1 : 1;
+        return (b.rating || 0) - (a.rating || 0);
+      });
+
+      return { source: 'api', friends: enriched };
+    } catch (err) {
+      appendErrorLog({
+        source: 'Main:cf:fetchFriends',
+        message: err.message || String(err),
+        stack: err.stack || '',
+        context: '调用 user.friends 同步好友列表时发生错误'
+      });
+      throw err;
+    }
   });
 
   // Fetch live Codeforces data for a handle
-  ipcMain.handle('cf:fetchUserData', async (event, { handle, apiKey, apiSecret, forceRefresh }) => {
+  ipcMain.handle('cf:fetchUserData', async (_event, { handle, apiKey, apiSecret, forceRefresh }) => {
     const cleanHandle = String(handle || '').trim();
     if (!cleanHandle) {
       throw new Error('请输入有效的 Codeforces 用户名 (Handle)');
@@ -597,12 +872,28 @@ app.whenReady().then(() => {
     if (cleanHandle.toLowerCase() === 'demo_coder') {
       return generateDemoDataset('Demo_Coder');
     }
+    if (cleanHandle.toLowerCase() === 'demo_teammate_dp') {
+      return generateDemoRivalDataset('Demo_Teammate_DP');
+    }
 
-    // Check cache if not forceRefresh
     const cacheFile = getUserCachePath(cleanHandle);
     if (!forceRefresh) {
       const cached = readJsonSafe(cacheFile, null);
       if (cached && Date.now() - (cached.syncedAt || 0) < 10 * 60 * 1000) {
+        if (cached.userInfo) {
+          const rawAvatar = cached.userInfo.avatar || cached.userInfo.titlePhoto || '';
+          const rawTitle = cached.userInfo.titlePhoto || cached.userInfo.avatar || '';
+          cached.userInfo.avatar = normalizeAvatarUrl(rawAvatar);
+          cached.userInfo.titlePhoto = normalizeAvatarUrl(rawTitle);
+          if (!cached.userInfo.avatarDataUrl && (cached.userInfo.avatar || cached.userInfo.titlePhoto)) {
+            cached.userInfo.avatarDataUrl =
+              (await fetchImageAsDataUrl(cached.userInfo.avatar)) ||
+              (await fetchImageAsDataUrl(cached.userInfo.titlePhoto));
+            if (cached.userInfo.avatarDataUrl) {
+              writeJsonSafe(cacheFile, cached);
+            }
+          }
+        }
         return cached;
       }
     }
@@ -613,12 +904,21 @@ app.whenReady().then(() => {
       }
     };
 
-    sendProgress(`正在获取 ${cleanHandle} 的基本资料 (user.info)...`, 15);
+    sendProgress(`正在获取 ${cleanHandle} 的基本资料与头像 (user.info)...`, 15);
     const userInfoArr = await requestCfApi('user.info', { handles: cleanHandle }, apiKey, apiSecret);
     if (!Array.isArray(userInfoArr) || userInfoArr.length === 0) {
       throw new Error(`未找到用户 "${cleanHandle}"`);
     }
     const userInfo = userInfoArr[0];
+
+    // Normalize & download user avatar as base64 Data URL so it never fails to render
+    const rawAvatar = userInfo.avatar || userInfo.titlePhoto || '';
+    const rawPhoto = userInfo.titlePhoto || userInfo.avatar || '';
+    userInfo.avatar = normalizeAvatarUrl(rawAvatar);
+    userInfo.titlePhoto = normalizeAvatarUrl(rawPhoto);
+    userInfo.avatarDataUrl =
+      (await fetchImageAsDataUrl(userInfo.avatar)) ||
+      (await fetchImageAsDataUrl(userInfo.titlePhoto));
 
     await sleep(400);
     sendProgress(`正在拉取 ${userInfo.handle} 的历史比赛记录 (user.rating)...`, 40);

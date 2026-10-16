@@ -17,7 +17,7 @@
         <span class="brand-bar red"></span>
       </div>
       <span class="brand-title">Codeforces Helper</span>
-      <span class="brand-badge">Desktop Client v1.0</span>
+      <span class="brand-badge">Desktop Client v1.0.1</span>
     </div>
 
     <div class="titlebar-center">
@@ -49,7 +49,10 @@
         <div class="profile-header">
           <div id="sidebar-avatar" class="profile-avatar">CF</div>
           <div class="profile-meta">
-            <div id="sidebar-handle" class="profile-handle">Demo_Coder</div>
+            <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+              <div id="sidebar-handle" class="profile-handle">Demo_Coder</div>
+              <span id="sidebar-api-verified-badge" class="badge badge-green" style="display:none; font-size:10px; padding:1px 6px;" title="已通过 Codeforces 官方 API Key SHA-512 签名验证">已认证</span>
+            </div>
             <div id="sidebar-rank" class="profile-rank-badge">Expert</div>
           </div>
         </div>
@@ -71,24 +74,28 @@
       <div class="nav-section-label">核心功能模块</div>
       <nav class="nav-list">
         <button class="nav-item active" data-tab="tab-overview">
-          <span class="nav-item-left"><span class="nav-icon">📊</span> 总览看板</span>
+          <span class="nav-item-left">总览看板</span>
         </button>
         <button class="nav-item" data-tab="tab-problems">
-          <span class="nav-item-left"><span class="nav-icon">📈</span> 做题数量统计</span>
+          <span class="nav-item-left">做题数量统计</span>
           <span id="nav-ac-badge" class="nav-badge info">0</span>
         </button>
         <button class="nav-item" data-tab="tab-tags">
-          <span class="nav-item-left"><span class="nav-icon">🎯</span> Tag 强弱项诊断</span>
+          <span class="nav-item-left">Tag 强弱项诊断</span>
           <span id="nav-weak-badge" class="nav-badge" title="待改进薄弱 Tag 数量">0 短板</span>
         </button>
         <button class="nav-item" data-tab="tab-contests">
-          <span class="nav-item-left"><span class="nav-icon">🏆</span> 比赛情况复盘</span>
+          <span class="nav-item-left">比赛情况复盘</span>
         </button>
         <button class="nav-item" data-tab="tab-predictor">
-          <span class="nav-item-left"><span class="nav-icon">🔮</span> 分数预测与模拟</span>
+          <span class="nav-item-left">分数预测与模拟</span>
+        </button>
+        <button class="nav-item" data-tab="tab-friends">
+          <span class="nav-item-left">好友与对战 PK</span>
+          <span id="nav-friends-badge" class="nav-badge info" title="API Key 好友榜与双人实力对比">PK</span>
         </button>
         <button class="nav-item" data-tab="tab-settings">
-          <span class="nav-item-left"><span class="nav-icon">⚙️</span> 账号与 API 设置</span>
+          <span class="nav-item-left">账号与 API 设置</span>
         </button>
       </nav>
 
@@ -107,7 +114,7 @@
       <section id="tab-overview" class="tab-pane active">
         <div id="demo-notice-banner" class="card" style="background: linear-gradient(90deg, rgba(59,130,246,0.16), rgba(139,92,246,0.12)); border-color: rgba(59,130,246,0.35); padding: 12px 18px; display: flex; align-items: center; justify-content: space-between;">
           <div style="font-size: 13px;">
-            💡 <strong>当前为内置演示账号 (Demo_Coder)</strong>：为您完整展示各项图表、Tag 强弱项诊断与分数预测效果。您可以直接在顶部输入您的 <strong>Codeforces 用户名</strong> 登录同步真实数据！
+            <strong>当前为内置演示账号 (Demo_Coder)</strong>：为您完整展示各项图表、Tag 强弱项诊断与分数预测效果。您可以直接在顶部输入您的 <strong>Codeforces 用户名</strong> 登录同步真实数据。
           </div>
           <button class="btn-primary" style="padding: 5px 12px; font-size: 12px;" data-goto-tab="tab-settings">去绑定我的账号 →</button>
         </div>
@@ -121,22 +128,22 @@
 
         <div class="kpi-grid">
           <div class="kpi-card">
-            <div class="kpi-label"><span>当前比赛 Rating</span> <span>🏆</span></div>
+            <div class="kpi-label"><span>当前比赛 Rating</span></div>
             <div id="ov-kpi-rating" class="kpi-value">1685</div>
             <div id="ov-kpi-rating-sub" class="kpi-sub">最高: 1742 (Expert)</div>
           </div>
           <div class="kpi-card">
-            <div class="kpi-label"><span>累计通过题数 (AC)</span> <span>✅</span></div>
+            <div class="kpi-label"><span>累计通过题数 (AC)</span></div>
             <div id="ov-kpi-solved" class="kpi-value">0</div>
             <div id="ov-kpi-solved-sub" class="kpi-sub">总提交: 0 | 一发通过率: 0%</div>
           </div>
           <div class="kpi-card">
-            <div class="kpi-label"><span>近期刷题实力预测</span> <span>🔮</span></div>
+            <div class="kpi-label"><span>近期刷题实力预测</span></div>
             <div id="ov-kpi-pred" class="kpi-value">1760</div>
             <div id="ov-kpi-pred-sub" class="kpi-sub">基于近 30 道 AC 题有效难度拟合</div>
           </div>
           <div class="kpi-card">
-            <div class="kpi-label"><span>Tag 诊断 & 待补题</span> <span>🎯</span></div>
+            <div class="kpi-label"><span>Tag 诊断 & 待补题</span></div>
             <div id="ov-kpi-weak" class="kpi-value">0 个短板</div>
             <div id="ov-kpi-weak-sub" class="kpi-sub">尝试未过待补题目: 0 道</div>
           </div>
@@ -146,7 +153,7 @@
           <div class="card" style="margin-bottom: 0;">
             <div class="card-header">
               <div>
-                <div class="card-title">📈 Rating 历史走势与实力拟合线</div>
+                <div class="card-title">Rating 历史走势与实力拟合线</div>
                 <div class="card-desc">实线为历史比赛 Rating，虚线为当前日常刷题拟合出的实力水平线</div>
               </div>
               <button class="link-btn" data-goto-tab="tab-contests">查看比赛详情 →</button>
@@ -157,7 +164,7 @@
           <div class="card" style="margin-bottom: 0;">
             <div class="card-header">
               <div>
-                <div class="card-title">🕸️ 八维核心算法能力雷达图</div>
+                <div class="card-title">八维核心算法能力雷达图</div>
                 <div class="card-desc">综合题量、攻克难度与通过率评估的八大核心领域得分</div>
               </div>
               <button class="link-btn" data-goto-tab="tab-tags">深度诊断 →</button>
@@ -169,7 +176,7 @@
         <div class="grid-2" style="margin-top: 18px;">
           <div class="card" style="margin-bottom: 0;">
             <div class="card-header">
-              <div class="card-title">⚖️ 核心擅长 vs 急需改进 Tag 速览</div>
+              <div class="card-title">核心擅长 vs 急需改进 Tag 速览</div>
               <button class="link-btn" data-goto-tab="tab-tags">进入专项推题 →</button>
             </div>
             <div id="ov-tag-highlights"></div>
@@ -177,7 +184,7 @@
 
           <div class="card" style="margin-bottom: 0;">
             <div class="card-header">
-              <div class="card-title">⏱️ 最近做题与提交动态</div>
+              <div class="card-title">最近做题与提交动态</div>
               <button class="link-btn" data-goto-tab="tab-problems">查看全部记录 →</button>
             </div>
             <div class="table-wrap" style="max-height: 245px; overflow-y: auto;">
@@ -210,22 +217,22 @@
 
         <div class="kpi-grid">
           <div class="kpi-card">
-            <div class="kpi-label"><span>独立 AC 题目总数</span> <span>📚</span></div>
+            <div class="kpi-label"><span>独立 AC 题目总数</span></div>
             <div id="prob-kpi-ac" class="kpi-value">0</div>
             <div id="prob-kpi-attempted" class="kpi-sub">累计尝试过 0 道独立题目</div>
           </div>
           <div class="kpi-card">
-            <div class="kpi-label"><span>已攻克最高难度</span> <span>⛰️</span></div>
+            <div class="kpi-label"><span>已攻克最高难度</span></div>
             <div id="prob-kpi-max-rating" class="kpi-value">0</div>
             <div id="prob-kpi-avg-rating" class="kpi-sub">全部 AC 题目平均难度: 0</div>
           </div>
           <div class="kpi-card">
-            <div class="kpi-label"><span>一发入魂率 (1A Rate)</span> <span>⚡</span></div>
+            <div class="kpi-label"><span>一发入魂率 (1A Rate)</span></div>
             <div id="prob-kpi-1a" class="kpi-value">0%</div>
             <div id="prob-kpi-passrate" class="kpi-sub">总提交 AC 占比: 0%</div>
           </div>
           <div class="kpi-card">
-            <div class="kpi-label"><span>累计活跃刷题天数</span> <span>🔥</span></div>
+            <div class="kpi-label"><span>累计活跃刷题天数</span></div>
             <div id="prob-kpi-days" class="kpi-value">0 天</div>
             <div id="prob-kpi-recent30" class="kpi-sub">近 30 天攻克: 0 题</div>
           </div>
@@ -235,7 +242,7 @@
           <div class="card" style="margin-bottom: 0;">
             <div class="card-header">
               <div>
-                <div class="card-title">📊 已通过题目难度分布 (Rating 800 ~ 3000+)</div>
+                <div class="card-title">已通过题目难度分布 (Rating 800 ~ 3000+)</div>
                 <div class="card-desc">按 Codeforces 官方段位颜色展示您在各个难度区间的刷题数量</div>
               </div>
             </div>
@@ -245,7 +252,7 @@
           <div class="card" style="margin-bottom: 0;">
             <div class="card-header">
               <div>
-                <div class="card-title">🎯 提交判题结果占比 (Verdict 统计)</div>
+                <div class="card-title">提交判题结果占比 (Verdict 统计)</div>
                 <div class="card-desc">分析平时最常出现的错误类型（WA / TLE / RE / MLE）</div>
               </div>
             </div>
@@ -256,7 +263,7 @@
         <div class="card" style="margin-top: 18px;">
           <div class="card-header">
             <div>
-              <div class="card-title">📅 过去 365 天刷题活跃度热力图</div>
+              <div class="card-title">过去 365 天刷题活跃度热力图</div>
               <div class="card-desc">每日 AC 与提交频次统计，保持训练手感</div>
             </div>
           </div>
@@ -266,7 +273,7 @@
         <div class="card">
           <div class="card-header">
             <div>
-              <div class="card-title">🗂️ 做题记录明细与检索库</div>
+              <div class="card-title">做题记录明细与检索库</div>
               <div class="card-desc">支持按通过状态、Tag 标签、难度区间筛选题目，点击题目可直接跳转原题</div>
             </div>
             <div class="filter-bar">
@@ -315,7 +322,7 @@
         <div class="quadrant-grid">
           <div class="quadrant-card strength">
             <div class="quadrant-title">
-              <span style="color: #34d399;">🟢 优势擅长区 (Strengths)</span>
+              <span style="color: #34d399;">优势擅长区 (Strengths)</span>
               <span id="quad-count-strength" class="badge badge-green">0 个标签</span>
             </div>
             <div class="quadrant-subtitle">题量充足、攻克难度匹配或超越当前段位、且一次通过率高（比赛稳健得分点）</div>
@@ -324,7 +331,7 @@
 
           <div class="quadrant-card weakness">
             <div class="quadrant-title">
-              <span style="color: #fbbf24;">🟠 薄弱待改进区 (Weaknesses - 重点突破)</span>
+              <span style="color: #fbbf24;">薄弱待改进区 (Weaknesses - 重点突破)</span>
               <span id="quad-count-weakness" class="badge badge-amber">0 个标签</span>
             </div>
             <div class="quadrant-subtitle">尝试多次但经常 WA/TLE、卡题积压未补较多、或攻克难度明显落后于当前 Rating</div>
@@ -333,7 +340,7 @@
 
           <div class="quadrant-card solid">
             <div class="quadrant-title">
-              <span style="color: #60a5fa;">🔵 常规巩固区 / 舒适区 (Comfort Zone)</span>
+              <span style="color: #60a5fa;">常规巩固区 / 舒适区 (Comfort Zone)</span>
               <span id="quad-count-solid" class="badge badge-blue">0 个标签</span>
             </div>
             <div class="quadrant-subtitle">做题数量较多，但大多集中在低难度水题，建议减少低分重复刷题，拔高难度上限</div>
@@ -342,7 +349,7 @@
 
           <div class="quadrant-card blindspot">
             <div class="quadrant-title">
-              <span style="color: #c084fc;">⚪ 高频考察盲区 (Blind Spots)</span>
+              <span style="color: #c084fc;">高频考察盲区 (Blind Spots)</span>
               <span id="quad-count-blindspot" class="badge badge-purple">0 个标签</span>
             </div>
             <div class="quadrant-subtitle">Codeforces 比赛高频考察的核心算法标签，但您目前通过题数极少（&lt; 8 题），需补齐短板</div>
@@ -355,7 +362,7 @@
           <div class="card" style="margin-bottom: 0;">
             <div class="card-header">
               <div>
-                <div class="card-title">🧭 Tag 攻克难度 vs 通过率 四象限分布图</div>
+                <div class="card-title">Tag 攻克难度 vs 通过率 四象限分布图</div>
                 <div class="card-desc">横轴：该 Tag 平均攻克 Rating | 纵轴：题目一次通过率 | 气泡大小：AC 题数</div>
               </div>
             </div>
@@ -365,7 +372,7 @@
           <div class="card" style="margin-bottom: 0;">
             <div class="card-header">
               <div>
-                <div class="card-title">📊 各 Tag 已通过题数 vs 待补题积压对比</div>
+                <div class="card-title">各 Tag 已通过题数 vs 待补题积压对比</div>
                 <div class="card-desc">直观对比主力标签的刷题体量与卡题未通过数量</div>
               </div>
             </div>
@@ -378,7 +385,7 @@
           <div class="card" style="margin-bottom: 0;">
             <div class="card-header">
               <div>
-                <div class="card-title">🚀 针对「薄弱/盲区 Tag」智能推荐练习题</div>
+                <div class="card-title">针对「薄弱/盲区 Tag」智能推荐练习题</div>
                 <div class="card-desc">根据您的短板标签与当前 Rating，自动筛选您尚未做过的经典好题</div>
               </div>
               <div class="filter-bar">
@@ -409,7 +416,7 @@
           <div class="card" style="margin-bottom: 0;">
             <div class="card-header">
               <div>
-                <div class="card-title">🛠️ 待补题清单 (曾尝试但未 AC 的题目)</div>
+                <div class="card-title">待补题清单 (曾尝试但未 AC 的题目)</div>
                 <div class="card-desc">您在这些题目上交过 WA/TLE 但尚未攻克，补题是提升薄弱 Tag 最快的方式</div>
               </div>
             </div>
@@ -434,7 +441,7 @@
         <div class="card" style="margin-top: 18px;">
           <div class="card-header">
             <div>
-              <div class="card-title">📋 全量 Tag 掌握度评分与诊断明细表</div>
+              <div class="card-title">全量 Tag 掌握度评分与诊断明细表</div>
               <div class="card-desc">掌握度评分 (0-100) 综合了题量饱和度、Top-5 攻克难度比、一次通过率与未补题惩罚</div>
             </div>
             <div class="filter-bar">
@@ -481,22 +488,22 @@
 
         <div class="kpi-grid">
           <div class="kpi-card">
-            <div class="kpi-label"><span>Rated 参赛总场次</span> <span>🏁</span></div>
+            <div class="kpi-label"><span>Rated 参赛总场次</span></div>
             <div id="contest-kpi-count" class="kpi-value">0 场</div>
             <div id="contest-kpi-winrate" class="kpi-sub">上分场次占比: 0%</div>
           </div>
           <div class="kpi-card">
-            <div class="kpi-label"><span>历史最高 Rating</span> <span>👑</span></div>
+            <div class="kpi-label"><span>历史最高 Rating</span></div>
             <div id="contest-kpi-peak" class="kpi-value">0</div>
             <div id="contest-kpi-cur" class="kpi-sub">当前 Rating: 0</div>
           </div>
           <div class="kpi-card">
-            <div class="kpi-label"><span>单场最大上分 / 掉分</span> <span>⚡</span></div>
+            <div class="kpi-label"><span>单场最大上分 / 掉分</span></div>
             <div id="contest-kpi-maxdelta" class="kpi-value">+0 / -0</div>
             <div id="contest-kpi-avgdelta" class="kpi-sub">近 5 场净变化: +0</div>
           </div>
           <div class="kpi-card">
-            <div class="kpi-label"><span>历史最佳比赛排名</span> <span>🥇</span></div>
+            <div class="kpi-label"><span>历史最佳比赛排名</span></div>
             <div id="contest-kpi-bestrank" class="kpi-value">#0</div>
             <div id="contest-kpi-avgrank" class="kpi-sub">历史场均排名: #0</div>
           </div>
@@ -505,7 +512,7 @@
         <div class="card">
           <div class="card-header">
             <div>
-              <div class="card-title">📈 Codeforces 生涯 Rating 历史曲线 (含官方段位色带)</div>
+              <div class="card-title">Codeforces 生涯 Rating 历史曲线 (含官方段位色带)</div>
               <div class="card-desc">支持鼠标滚轮缩放或拖动底部滑块查看特定时期的比赛表现</div>
             </div>
           </div>
@@ -516,7 +523,7 @@
           <div class="card" style="margin-bottom: 0;">
             <div class="card-header">
               <div>
-                <div class="card-title">📜 历史参赛战绩与当场表现分复盘</div>
+                <div class="card-title">历史参赛战绩与当场表现分复盘</div>
                 <div class="card-desc">点击比赛名称可在浏览器中打开对应场次 Standings / 题目列表</div>
               </div>
             </div>
@@ -541,7 +548,7 @@
           <div class="card" style="margin-bottom: 0;">
             <div class="card-header">
               <div>
-                <div class="card-title">⏰ 近期即将开始的 Codeforces 比赛</div>
+                <div class="card-title">近期即将开始的 Codeforces 比赛</div>
                 <div class="card-desc">提前规划参赛时间，点击可前往官方报名页</div>
               </div>
             </div>
@@ -566,7 +573,7 @@
           <div class="card" style="margin-bottom: 0;">
             <div class="card-header">
               <div>
-                <div class="card-title">🧠 近期刷题真实实力 Rating 拟合评估</div>
+                <div class="card-title">近期刷题真实实力 Rating 拟合评估</div>
                 <div class="card-desc">基于您最近攻克的 30 道题目有效难度、Top 上限与一次通过率推算</div>
               </div>
             </div>
@@ -595,7 +602,7 @@
           <div class="card" style="margin-bottom: 0;">
             <div class="card-header">
               <div>
-                <div class="card-title">🎛️ 下场比赛名次 & Rating 涨跌模拟器</div>
+                <div class="card-title">下场比赛名次 & Rating 涨跌模拟器</div>
                 <div class="card-desc">采用 Codeforces Elo-MMR 种子排位模型，滑动滑块实时预测赛后分数变化</div>
               </div>
             </div>
@@ -654,7 +661,7 @@
           <div class="card" style="margin-bottom: 0;">
             <div class="card-header">
               <div>
-                <div class="card-title">📉 下场比赛「名次 — 涨跌分 (Δ)」收益曲线</div>
+                <div class="card-title">下场比赛「名次 — 涨跌分 (Δ)」收益曲线</div>
                 <div class="card-desc">直观展示在当前 Rating 下，取得不同名次对应的加分与扣分临界点</div>
               </div>
             </div>
@@ -664,7 +671,7 @@
           <div class="card" style="margin-bottom: 0;">
             <div class="card-header">
               <div>
-                <div class="card-title">🎯 下一段位冲刺目标规划</div>
+                <div class="card-title">下一段位冲刺目标规划</div>
                 <div class="card-desc">距离晋升下一个头衔所需的比赛表现与日常刷题难度建议</div>
               </div>
             </div>
@@ -674,13 +681,121 @@
       </section>
 
       <!-- ==========================================
-           TAB 6: ACCOUNT & API SETTINGS
+           TAB 6: FRIENDS LEADERBOARD & 1V1 RIVAL PK (API KEY EXCLUSIVE + PK)
+           ========================================== -->
+      <section id="tab-friends" class="tab-pane">
+        <div class="page-header">
+          <div>
+            <h1 class="page-title">好友排行榜与双人实力对比 PK 中心</h1>
+            <p class="page-subtitle">通过官方 API Key 自动同步您的 Codeforces 好友列表与实时在线状态，并支持与任意好友/对手进行八维雷达图与 Tag 优劣势 1v1 深度对比</p>
+          </div>
+          <div style="display: flex; gap: 10px; align-items: center;">
+            <button id="btn-sync-friends" class="btn-primary">同步 CF 官方好友列表 (API Key)</button>
+            <button class="btn-secondary" data-goto-tab="tab-settings">配置 API Key</button>
+          </div>
+        </div>
+
+        <!-- API Key Status Banner -->
+        <div id="friends-api-banner" class="card" style="padding: 13px 18px; margin-bottom: 18px; display: flex; align-items: center; justify-content: space-between; background: linear-gradient(90deg, rgba(16,185,129,0.12), rgba(59,130,246,0.10)); border-color: rgba(16,185,129,0.3);">
+          <div id="friends-api-banner-text" style="font-size: 12.5px; line-height: 1.5;">
+            <strong>API Key 专属功能说明</strong>：配置您的 Codeforces API Key 与 Secret 后，客户端可通过 SHA-512 签名调用官方私有接口 <code>user.friends</code>，实时拉取您在 CF 官网收藏的全部好友、队友 Rating 排名与当前是否在线。
+          </div>
+        </div>
+
+        <!-- Friends Leaderboard Table -->
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">
+                <span>Codeforces 好友实力排行榜与实时在线状态</span>
+                <span id="friends-count-badge" class="badge badge-blue">0 位好友</span>
+                <span id="friends-online-badge" class="badge badge-green">0 人在线</span>
+              </div>
+              <div class="card-desc">展示您关注的队友与好友最新 Rating 排名、历史最高分及在线动态，点击「1v1 PK」即可一键开启双人全方位对比</div>
+            </div>
+          </div>
+
+          <div class="table-wrap" style="max-height: 310px; overflow-y: auto;">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>排名</th>
+                  <th>好友 / 队友 (Handle)</th>
+                  <th>实时在线状态</th>
+                  <th>段位头衔</th>
+                  <th>当前 Rating</th>
+                  <th>最高 Rating</th>
+                  <th>与我分差</th>
+                  <th>快捷操作</th>
+                </tr>
+              </thead>
+              <tbody id="friends-leaderboard-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- 1v1 Capability Radar & Tag PK Center -->
+        <div class="card" style="margin-bottom: 0;">
+          <div class="card-header" style="flex-wrap: wrap; gap: 12px;">
+            <div>
+              <div class="card-title">双人全维实力对比 PK 台 (1v1 雷达图 & 短板互补诊断)</div>
+              <div class="card-desc">选择一位好友或输入任意 Codeforces 用户名，对比双方八大算法维度、各 Tag 掌握度差异，并挖掘「对手已 AC 但我未做」的高价值训练题</div>
+            </div>
+            <div class="filter-bar">
+              <select id="pk-friend-select" class="select-control" title="从好友列表中快速选择">
+                <option value="">-- 从好友/预设中选择对手 --</option>
+              </select>
+              <input id="pk-rival-input" class="input-control" type="text" placeholder="或输入任意对手 Handle..." style="width: 190px;" />
+              <button id="btn-start-pk" class="btn-primary">开始 1v1 实力对比</button>
+            </div>
+          </div>
+
+          <!-- Head-to-Head KPI Banner -->
+          <div id="pk-h2h-summary" class="pk-h2h-box"></div>
+
+          <!-- Dual Radar Chart & Tag Advantage Comparison -->
+          <div class="grid-2" style="margin-top: 16px; margin-bottom: 0;">
+            <div style="background: rgba(9, 13, 22, 0.55); border: 1px solid var(--border-subtle); border-radius: 10px; padding: 14px;">
+              <div style="font-size: 13.5px; font-weight: 700; margin-bottom: 4px; color: #f3f4f6;">双人八维算法能力重叠雷达图</div>
+              <div style="font-size: 11.5px; color: var(--text-secondary); margin-bottom: 8px;">蓝色为您的能力模型，橙红色为对比选手的能力模型</div>
+              <div id="chart-pk-radar" class="chart-box" style="height: 310px;"></div>
+            </div>
+
+            <div style="background: rgba(9, 13, 22, 0.55); border: 1px solid var(--border-subtle); border-radius: 10px; padding: 14px; display: flex; flex-direction: column; justify-content: space-between;">
+              <div>
+                <div style="font-size: 13.5px; font-weight: 700; margin-bottom: 6px; color: #f3f4f6;">核心 Tag 掌握度优劣势对比</div>
+                <div id="pk-tag-diff-box" style="margin-bottom: 12px;"></div>
+              </div>
+
+              <div>
+                <div style="font-size: 13px; font-weight: 700; margin-bottom: 6px; color: #60a5fa;">对手已攻克但我尚未 AC 的进阶好题 (追赶题单)</div>
+                <div class="table-wrap" style="max-height: 175px; overflow-y: auto;">
+                  <table class="data-table">
+                    <thead>
+                      <tr>
+                        <th>题号</th>
+                        <th>题目名称</th>
+                        <th>难度</th>
+                        <th>标签</th>
+                      </tr>
+                    </thead>
+                    <tbody id="pk-recommend-tbody"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==========================================
+           TAB 7: ACCOUNT & API SETTINGS
            ========================================== -->
       <section id="tab-settings" class="tab-pane">
         <div class="page-header">
           <div>
             <h1 class="page-title">账号管理与 API 认证设置</h1>
-            <p class="page-subtitle">绑定您的 Codeforces 个人账号、管理多个关注账号，或配置官方 API Key 签名认证</p>
+            <p class="page-subtitle">绑定您的 Codeforces 个人账号、管理多个关注账号，或配置官方 API Key 解锁好友与身份认证特权</p>
           </div>
         </div>
 
@@ -688,7 +803,7 @@
           <div class="card">
             <div class="card-header">
               <div>
-                <div class="card-title">👤 登录 / 绑定 Codeforces 账号</div>
+                <div class="card-title">登录 / 绑定 Codeforces 账号</div>
                 <div class="card-desc">输入您的 Codeforces 用户名 (Handle) 即可拉取全部做题记录、Tag 统计与比赛历史</div>
               </div>
             </div>
@@ -705,10 +820,10 @@
             <div class="form-group" style="margin-top: 18px;">
               <label class="form-label">快速体验 / 知名选手预设</label>
               <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                <button class="btn-secondary preset-handle-btn" data-handle="Demo_Coder">🌟 Demo_Coder (内置完整演示)</button>
-                <button class="btn-secondary preset-handle-btn" data-handle="jiangly">🔥 jiangly</button>
-                <button class="btn-secondary preset-handle-btn" data-handle="tourist">👑 tourist</button>
-                <button class="btn-secondary preset-handle-btn" data-handle="Benq">⚡ Benq</button>
+                <button class="btn-secondary preset-handle-btn" data-handle="Demo_Coder">Demo_Coder (内置完整演示)</button>
+                <button class="btn-secondary preset-handle-btn" data-handle="jiangly">jiangly</button>
+                <button class="btn-secondary preset-handle-btn" data-handle="tourist">tourist</button>
+                <button class="btn-secondary preset-handle-btn" data-handle="Benq">Benq</button>
               </div>
             </div>
 
@@ -721,28 +836,57 @@
           <div class="card">
             <div class="card-header">
               <div>
-                <div class="card-title">🔐 高级认证：Codeforces API Key (可选)</div>
-                <div class="card-desc">如果您需要访问非公开数据，可填入在 CF 官网 Settings -> API 生成的密钥，客户端内置官方 SHA-512 签名算法</div>
+                <div class="card-title">高级认证：Codeforces API Key (解锁专属特权)</div>
+                <div class="card-desc">在 CF 官网 Settings -> API 生成密钥后填入下方，客户端内置官方 SHA-512 签名引擎</div>
               </div>
+            </div>
+
+            <div style="padding: 11px 14px; border-radius: 9px; background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.25); font-size: 12px; line-height: 1.65; color: #d1d5db; margin-bottom: 14px;">
+              <div style="font-weight: 700; color: #60a5fa; margin-bottom: 4px;">配置 API Key 后可解锁以下专属功能：</div>
+              <div>1. <strong>同步官方好友列表 (<code>user.friends</code>)</strong>：自动拉取您在 CF 关注的所有好友/队友与 Rating 排行榜</div>
+              <div>2. <strong>实时在线状态监测 (<code>onlyOnline</code>)</strong>：在「好友与对战 PK」页实时查看哪些好友当前正在线刷题</div>
+              <div>3. <strong>号主身份签名验真 (<code>已认证</code>)</strong>：验证您的密钥有效性并在左侧个人卡片点亮认证徽章</div>
             </div>
 
             <div class="form-group">
               <label class="form-label">API Key</label>
-              <input id="settings-apikey-input" class="input-control" style="width: 100%;" type="text" placeholder="选填：输入 40 位 Codeforces API Key" />
+              <input id="settings-apikey-input" class="input-control" style="width: 100%;" type="text" placeholder="选填：输入 Codeforces API Key" />
             </div>
 
             <div class="form-group">
               <label class="form-label">API Secret</label>
-              <input id="settings-apisecret-input" class="input-control" style="width: 100%;" type="password" placeholder="选填：输入 40 位 Codeforces API Secret" />
+              <input id="settings-apisecret-input" class="input-control" style="width: 100%;" type="password" placeholder="选填：输入 Codeforces API Secret" />
               <div class="form-hint">
-                安全说明：您的 Key 与 Secret 仅保存在您本机电脑的 <code>AppData</code> 目录中，即使把软件程序打包发给朋友，也不会包含您的个人配置。
+                安全说明：您的 Key 与 Secret 仅保存在您本机电脑的 <code>AppData</code> 目录中，即使把软件程序打包分享给他人，也不会包含您的个人密钥。
               </div>
             </div>
 
-            <div style="display: flex; gap: 10px; margin-top: 16px;">
-              <button id="settings-save-api-btn" class="btn-primary">保存 API 密钥配置</button>
+            <div id="api-verify-status-box" style="display:none; margin-top: 12px; padding: 10px 12px; border-radius: 8px; font-size: 12px;"></div>
+
+            <div style="display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap;">
+              <button id="settings-save-api-btn" class="btn-primary">保存并验证 API 密钥</button>
               <button id="settings-open-cfapi-btn" class="btn-secondary">前往 CF 官网生成 API Key ↗</button>
             </div>
+          </div>
+        </div>
+
+        <!-- Error & Diagnostic Logs Card -->
+        <div class="card" style="margin-top: 18px;">
+          <div class="card-header">
+            <div>
+              <div class="card-title">
+                <span>运行与报错诊断日志</span>
+                <span id="error-log-count-badge" class="badge badge-blue">0 条记录</span>
+              </div>
+              <div class="card-desc">自动捕获并持久化记录客户端运行过程中的 API 异常、网络超时或前端报错，支持一键复制完整堆栈信息以便排查</div>
+            </div>
+            <div style="display: flex; gap: 8px;">
+              <button id="btn-copy-error-logs" class="btn-secondary" style="font-size: 12px; padding: 6px 12px;">一键复制日志</button>
+              <button id="btn-clear-error-logs" class="btn-secondary" style="font-size: 12px; padding: 6px 12px; color: #fb7185;">清空日志</button>
+            </div>
+          </div>
+          <div id="error-log-list-box" style="max-height: 220px; overflow-y: auto; background: rgba(6, 9, 16, 0.75); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 10px 12px; font-family: var(--font-mono); font-size: 11.5px; line-height: 1.55; color: #d1d5db;">
+            <div style="color: var(--text-muted); text-align: center; padding: 16px;">暂无报错记录，系统运行正常</div>
           </div>
         </div>
       </section>

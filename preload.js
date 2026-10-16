@@ -11,6 +11,10 @@ contextBridge.exposeInMainWorld('cfDesktop', {
   getDemoData: (handle) => ipcRenderer.invoke('cf:getDemoData', handle),
   getCachedUser: (handle) => ipcRenderer.invoke('cf:getCachedUser', handle),
   fetchUserData: (payload) => ipcRenderer.invoke('cf:fetchUserData', payload),
+  fetchFriends: (payload) => ipcRenderer.invoke('cf:fetchFriends', payload),
+  appendErrorLog: (entry) => ipcRenderer.invoke('log:append', entry),
+  getErrorLogs: () => ipcRenderer.invoke('log:getAll'),
+  clearErrorLogs: () => ipcRenderer.invoke('log:clear'),
   onSyncProgress: (callback) => {
     const listener = (_event, data) => callback(data);
     ipcRenderer.on('cf:syncProgress', listener);

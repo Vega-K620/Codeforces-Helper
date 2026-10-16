@@ -1,12 +1,12 @@
 {
   "name": "codeforces-helper-client",
   "productName": "Codeforces Helper",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Codeforces 个人训练分析、Tag 强弱项诊断与 Rating 预测桌面客户端",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "pack": "electron-packager . CodeforcesHelper --platform=win32 --arch=x64 --out=release --overwrite"
+    "pack": "node pack.js"
   },
   "keywords": [
     "codeforces",
