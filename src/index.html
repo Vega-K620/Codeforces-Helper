@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Codeforces Helper Desktop</title>
+  <link rel="stylesheet" href="./styles.css" />
+  <script src="../node_modules/echarts/dist/echarts.min.js"></script>
+</head>
+<body>
+  <!-- Custom Frameless Desktop Title Bar -->
+  <header class="titlebar">
+    <div class="titlebar-brand">
+      <div class="brand-bars">
+        <span class="brand-bar yellow"></span>
+        <span class="brand-bar blue"></span>
+        <span class="brand-bar red"></span>
+      </div>
+      <span class="brand-title">Codeforces Helper</span>
+      <span class="brand-badge">Desktop Client v1.0</span>
+    </div>
+
+    <div class="titlebar-center">
+      <div class="quick-search-box">
+        <input id="top-handle-input" type="text" placeholder="输入 CF 用户名 (Handle)..." />
+        <button id="top-login-btn" class="btn-top-action">登录 / 同步</button>
+      </div>
+      <button id="top-refresh-btn" class="btn-icon-subtle" title="强制从 Codeforces 官方 API 重新拉取最新数据">
+        <span>↻</span> 刷新数据
+      </button>
+      <div class="sync-status-pill">
+        <span id="sync-dot" class="status-dot"></span>
+        <span id="sync-status-text">就绪</span>
+      </div>
+    </div>
+
+    <div class="window-controls">
+      <button id="win-min-btn" class="win-btn" title="最小化">─</button>
+      <button id="win-max-btn" class="win-btn" title="最大化/还原">□</button>
+      <button id="win-close-btn" class="win-btn close" title="关闭">✕</button>
+    </div>
+  </header>
+
+  <!-- Main Body -->
+  <div class="app-body">
+    <!-- Left Sidebar -->
+    <aside class="sidebar">
+      <div class="profile-card">
+        <div class="profile-header">
+          <div id="sidebar-avatar" class="profile-avatar">CF</div>
+          <div class="profile-meta">
+            <div id="sidebar-handle" class="profile-handle">Demo_Coder</div>
+            <div id="sidebar-rank" class="profile-rank-badge">Expert</div>
+          </div>
+        </div>
+        <div class="profile-rating-row">
+          <div>
+            <span style="color: var(--text-muted);">当前: </span>
+            <span id="sidebar-rating" class="rating-pill">1685</span>
+          </div>
+          <div>
+            <span style="color: var(--text-muted);">最高: </span>
+            <span id="sidebar-max-rating" class="rating-pill">1742</span>
+          </div>
+        </div>
+        <div class="account-switcher-wrap">
+          <select id="account-switcher" class="account-select" title="切换已保存的账号"></select>
+        </div>
+      </div>
+
+      <div class="nav-section-label">核心功能模块</div>
+      <nav class="nav-list">
+        <button class="nav-item active" data-tab="tab-overview">
+          <span class="nav-item-left"><span class="nav-icon">📊</span> 总览看板</span>
+        </button>
+        <button class="nav-item" data-tab="tab-problems">
+          <span class="nav-item-left"><span class="nav-icon">📈</span> 做题数量统计</span>
+          <span id="nav-ac-badge" class="nav-badge info">0</span>
+        </button>
+        <button class="nav-item" data-tab="tab-tags">
+          <span class="nav-item-left"><span class="nav-icon">🎯</span> Tag 强弱项诊断</span>
+          <span id="nav-weak-badge" class="nav-badge" title="待改进薄弱 Tag 数量">0 短板</span>
+        </button>
+        <button class="nav-item" data-tab="tab-contests">
+          <span class="nav-item-left"><span class="nav-icon">🏆</span> 比赛情况复盘</span>
+        </button>
+        <button class="nav-item" data-tab="tab-predictor">
+          <span class="nav-item-left"><span class="nav-icon">🔮</span> 分数预测与模拟</span>
+        </button>
+        <button class="nav-item" data-tab="tab-settings">
+          <span class="nav-item-left"><span class="nav-icon">⚙️</span> 账号与 API 设置</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div id="sidebar-mode-tag">模式：内置演示数据</div>
+        <div id="sidebar-sync-time">上次同步：刚刚</div>
+      </div>
+    </aside>
+
+    <!-- Right Workspace -->
+    <main class="main-content">
+
+      <!-- ==========================================
+           TAB 1: OVERVIEW DASHBOARD
+           ========================================== -->
+      <section id="tab-overview" class="tab-pane active">
+        <div id="demo-notice-banner" class="card" style="background: linear-gradient(90deg, rgba(59,130,246,0.16), rgba(139,92,246,0.12)); border-color: rgba(59,130,246,0.35); padding: 12px 18px; display: flex; align-items: center; justify-content: space-between;">
+          <div style="font-size: 13px;">
+            💡 <strong>当前为内置演示账号 (Demo_Coder)</strong>：为您完整展示各项图表、Tag 强弱项诊断与分数预测效果。您可以直接在顶部输入您的 <strong>Codeforces 用户名</strong> 登录同步真实数据！
+          </div>
+          <button class="btn-primary" style="padding: 5px 12px; font-size: 12px;" data-goto-tab="tab-settings">去绑定我的账号 →</button>
+        </div>
+
+        <div class="page-header">
+          <div>
+            <h1 class="page-title">选手训练总览看板</h1>
+            <p class="page-subtitle">全方位聚合您的刷题数量、算法能力模型、比赛状态与近期预测表现</p>
+          </div>
+        </div>
+
+        <div class="kpi-grid">
+          <div class="kpi-card">
+            <div class="kpi-label"><span>当前比赛 Rating</span> <span>🏆</span></div>
+            <div id="ov-kpi-rating" class="kpi-value">1685</div>
+            <div id="ov-kpi-rating-sub" class="kpi-sub">最高: 1742 (Expert)</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label"><span>累计通过题数 (AC)</span> <span>✅</span></div>
+            <div id="ov-kpi-solved" class="kpi-value">0</div>
+            <div id="ov-kpi-solved-sub" class="kpi-sub">总提交: 0 | 一发通过率: 0%</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label"><span>近期刷题实力预测</span> <span>🔮</span></div>
+            <div id="ov-kpi-pred" class="kpi-value">1760</div>
+            <div id="ov-kpi-pred-sub" class="kpi-sub">基于近 30 道 AC 题有效难度拟合</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label"><span>Tag 诊断 & 待补题</span> <span>🎯</span></div>
+            <div id="ov-kpi-weak" class="kpi-value">0 个短板</div>
+            <div id="ov-kpi-weak-sub" class="kpi-sub">尝试未过待补题目: 0 道</div>
+          </div>
+        </div>
+
+        <div class="grid-3-2">
+          <div class="card" style="margin-bottom: 0;">
+            <div class="card-header">
+              <div>
+                <div class="card-title">📈 Rating 历史走势与实力拟合线</div>
+                <div class="card-desc">实线为历史比赛 Rating，虚线为当前日常刷题拟合出的实力水平线</div>
+              </div>
+              <button class="link-btn" data-goto-tab="tab-contests">查看比赛详情 →</button>
+            </div>
+            <div id="chart-overview-rating" class="chart-box"></div>
+          </div>
+
+          <div class="card" style="margin-bottom: 0;">
+            <div class="card-header">
+              <div>
+                <div class="card-title">🕸️ 八维核心算法能力雷达图</div>
+                <div class="card-desc">综合题量、攻克难度与通过率评估的八大核心领域得分</div>
+              </div>
+              <button class="link-btn" data-goto-tab="tab-tags">深度诊断 →</button>
+            </div>
+            <div id="chart-overview-radar" class="chart-box"></div>
+          </div>
+        </div>
+
+        <div class="grid-2" style="margin-top: 18px;">
+          <div class="card" style="margin-bottom: 0;">
+            <div class="card-header">
+              <div class="card-title">⚖️ 核心擅长 vs 急需改进 Tag 速览</div>
+              <button class="link-btn" data-goto-tab="tab-tags">进入专项推题 →</button>
+            </div>
+            <div id="ov-tag-highlights"></div>
+          </div>
+
+          <div class="card" style="margin-bottom: 0;">
+            <div class="card-header">
+              <div class="card-title">⏱️ 最近做题与提交动态</div>
+              <button class="link-btn" data-goto-tab="tab-problems">查看全部记录 →</button>
+            </div>
+            <div class="table-wrap" style="max-height: 245px; overflow-y: auto;">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>题目</th>
+                    <th>难度</th>
+                    <th>状态</th>
+                    <th>时间</th>
+                  </tr>
+                </thead>
+                <tbody id="ov-recent-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==========================================
+           TAB 2: PROBLEM SOLVING STATISTICS
+           ========================================== -->
+      <section id="tab-problems" class="tab-pane">
+        <div class="page-header">
+          <div>
+            <h1 class="page-title">做题数量与多维统计</h1>
+            <p class="page-subtitle">统计各难度段刷题分布、提交判题状态（Verdict）、全年活跃度热力图与完整做题档案</p>
+          </div>
+        </div>
+
+        <div class="kpi-grid">
+          <div class="kpi-card">
+            <div class="kpi-label"><span>独立 AC 题目总数</span> <span>📚</span></div>
+            <div id="prob-kpi-ac" class="kpi-value">0</div>
+            <div id="prob-kpi-attempted" class="kpi-sub">累计尝试过 0 道独立题目</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label"><span>已攻克最高难度</span> <span>⛰️</span></div>
+            <div id="prob-kpi-max-rating" class="kpi-value">0</div>
+            <div id="prob-kpi-avg-rating" class="kpi-sub">全部 AC 题目平均难度: 0</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label"><span>一发入魂率 (1A Rate)</span> <span>⚡</span></div>
+            <div id="prob-kpi-1a" class="kpi-value">0%</div>
+            <div id="prob-kpi-passrate" class="kpi-sub">总提交 AC 占比: 0%</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label"><span>累计活跃刷题天数</span> <span>🔥</span></div>
+            <div id="prob-kpi-days" class="kpi-value">0 天</div>
+            <div id="prob-kpi-recent30" class="kpi-sub">近 30 天攻克: 0 题</div>
+          </div>
+        </div>
+
+        <div class="grid-3-2">
+          <div class="card" style="margin-bottom: 0;">
+            <div class="card-header">
+              <div>
+                <div class="card-title">📊 已通过题目难度分布 (Rating 800 ~ 3000+)</div>
+                <div class="card-desc">按 Codeforces 官方段位颜色展示您在各个难度区间的刷题数量</div>
+              </div>
+            </div>
+            <div id="chart-problem-rating" class="chart-box"></div>
+          </div>
+
+          <div class="card" style="margin-bottom: 0;">
+            <div class="card-header">
+              <div>
+                <div class="card-title">🎯 提交判题结果占比 (Verdict 统计)</div>
+                <div class="card-desc">分析平时最常出现的错误类型（WA / TLE / RE / MLE）</div>
+              </div>
+            </div>
+            <div id="chart-problem-verdict" class="chart-box"></div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top: 18px;">
+          <div class="card-header">
+            <div>
+              <div class="card-title">📅 过去 365 天刷题活跃度热力图</div>
+              <div class="card-desc">每日 AC 与提交频次统计，保持训练手感</div>
+            </div>
+          </div>
+          <div id="chart-problem-heatmap" class="chart-box heatmap"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">🗂️ 做题记录明细与检索库</div>
+              <div class="card-desc">支持按通过状态、Tag 标签、难度区间筛选题目，点击题目可直接跳转原题</div>
+            </div>
+            <div class="filter-bar">
+              <select id="prob-filter-status" class="select-control">
+                <option value="all">全部尝试题目</option>
+                <option value="ac">已通过 (AC)</option>
+                <option value="stuck">待补题 (尝试未过)</option>
+                <option value="1a">一发通过 (1A)</option>
+              </select>
+              <select id="prob-filter-tag" class="select-control">
+                <option value="all">全部 Tag 标签</option>
+              </select>
+              <input id="prob-filter-search" class="input-control" type="text" placeholder="搜索题号或题目名称..." />
+            </div>
+          </div>
+          <div class="table-wrap" style="max-height: 380px; overflow-y: auto;">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>题号</th>
+                  <th>题目名称</th>
+                  <th>难度 Rating</th>
+                  <th>算法标签 (Tags)</th>
+                  <th>状态 / 尝试次数</th>
+                  <th>最近提交时间</th>
+                </tr>
+              </thead>
+              <tbody id="prob-table-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==========================================
+           TAB 3: TAG MASTERY & WEAKNESS DIAGNOSTICS
+           ========================================== -->
+      <section id="tab-tags" class="tab-pane">
+        <div class="page-header">
+          <div>
+            <h1 class="page-title">Tag 强弱项智能诊断中心</h1>
+            <p class="page-subtitle">结合「做题数量 + 攻克难度上限 + 一次通过率 + 卡题未补率」四维模型，精准定位您的擅长领域与薄弱短板</p>
+          </div>
+        </div>
+
+        <!-- 4 Quadrants Classification -->
+        <div class="quadrant-grid">
+          <div class="quadrant-card strength">
+            <div class="quadrant-title">
+              <span style="color: #34d399;">🟢 优势擅长区 (Strengths)</span>
+              <span id="quad-count-strength" class="badge badge-green">0 个标签</span>
+            </div>
+            <div class="quadrant-subtitle">题量充足、攻克难度匹配或超越当前段位、且一次通过率高（比赛稳健得分点）</div>
+            <div id="quad-list-strength" class="tag-chip-list"></div>
+          </div>
+
+          <div class="quadrant-card weakness">
+            <div class="quadrant-title">
+              <span style="color: #fbbf24;">🟠 薄弱待改进区 (Weaknesses - 重点突破)</span>
+              <span id="quad-count-weakness" class="badge badge-amber">0 个标签</span>
+            </div>
+            <div class="quadrant-subtitle">尝试多次但经常 WA/TLE、卡题积压未补较多、或攻克难度明显落后于当前 Rating</div>
+            <div id="quad-list-weakness" class="tag-chip-list"></div>
+          </div>
+
+          <div class="quadrant-card solid">
+            <div class="quadrant-title">
+              <span style="color: #60a5fa;">🔵 常规巩固区 / 舒适区 (Comfort Zone)</span>
+              <span id="quad-count-solid" class="badge badge-blue">0 个标签</span>
+            </div>
+            <div class="quadrant-subtitle">做题数量较多，但大多集中在低难度水题，建议减少低分重复刷题，拔高难度上限</div>
+            <div id="quad-list-solid" class="tag-chip-list"></div>
+          </div>
+
+          <div class="quadrant-card blindspot">
+            <div class="quadrant-title">
+              <span style="color: #c084fc;">⚪ 高频考察盲区 (Blind Spots)</span>
+              <span id="quad-count-blindspot" class="badge badge-purple">0 个标签</span>
+            </div>
+            <div class="quadrant-subtitle">Codeforces 比赛高频考察的核心算法标签，但您目前通过题数极少（&lt; 8 题），需补齐短板</div>
+            <div id="quad-list-blindspot" class="tag-chip-list"></div>
+          </div>
+        </div>
+
+        <!-- Scatter & Bar Charts -->
+        <div class="grid-2">
+          <div class="card" style="margin-bottom: 0;">
+            <div class="card-header">
+              <div>
+                <div class="card-title">🧭 Tag 攻克难度 vs 通过率 四象限分布图</div>
+                <div class="card-desc">横轴：该 Tag 平均攻克 Rating | 纵轴：题目一次通过率 | 气泡大小：AC 题数</div>
+              </div>
+            </div>
+            <div id="chart-tag-scatter" class="chart-box tall"></div>
+          </div>
+
+          <div class="card" style="margin-bottom: 0;">
+            <div class="card-header">
+              <div>
+                <div class="card-title">📊 各 Tag 已通过题数 vs 待补题积压对比</div>
+                <div class="card-desc">直观对比主力标签的刷题体量与卡题未通过数量</div>
+              </div>
+            </div>
+            <div id="chart-tag-bar" class="chart-box tall"></div>
+          </div>
+        </div>
+
+        <!-- Actionable Weak Tag Recommender & Upsolving Queue -->
+        <div class="grid-2" style="margin-top: 18px;">
+          <div class="card" style="margin-bottom: 0;">
+            <div class="card-header">
+              <div>
+                <div class="card-title">🚀 针对「薄弱/盲区 Tag」智能推荐练习题</div>
+                <div class="card-desc">根据您的短板标签与当前 Rating，自动筛选您尚未做过的经典好题</div>
+              </div>
+              <div class="filter-bar">
+                <select id="rec-tag-select" class="select-control"></select>
+                <select id="rec-diff-select" class="select-control">
+                  <option value="match">巩固匹配 (当前 Rating ±100)</option>
+                  <option value="push" selected>进阶突破 (当前 Rating +0 ~ +200)</option>
+                  <option value="hard">挑战冲刺 (当前 Rating +150 ~ +350)</option>
+                </select>
+              </div>
+            </div>
+            <div class="table-wrap" style="max-height: 290px; overflow-y: auto;">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>题号</th>
+                    <th>推荐题目</th>
+                    <th>难度</th>
+                    <th>专项标签</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="rec-problems-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="card" style="margin-bottom: 0;">
+            <div class="card-header">
+              <div>
+                <div class="card-title">🛠️ 待补题清单 (曾尝试但未 AC 的题目)</div>
+                <div class="card-desc">您在这些题目上交过 WA/TLE 但尚未攻克，补题是提升薄弱 Tag 最快的方式</div>
+              </div>
+            </div>
+            <div class="table-wrap" style="max-height: 290px; overflow-y: auto;">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>题号</th>
+                    <th>未攻克题目</th>
+                    <th>难度</th>
+                    <th>涉及标签</th>
+                    <th>失败次数</th>
+                  </tr>
+                </thead>
+                <tbody id="stuck-problems-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Full Tag Diagnostic Table -->
+        <div class="card" style="margin-top: 18px;">
+          <div class="card-header">
+            <div>
+              <div class="card-title">📋 全量 Tag 掌握度评分与诊断明细表</div>
+              <div class="card-desc">掌握度评分 (0-100) 综合了题量饱和度、Top-5 攻克难度比、一次通过率与未补题惩罚</div>
+            </div>
+            <div class="filter-bar">
+              <select id="tag-table-sort" class="select-control">
+                <option value="mastery_desc">按掌握度评分 (从高到低)</option>
+                <option value="mastery_asc">按急需改进程度 (从低到高)</option>
+                <option value="ac_desc">按通过题数 (从多到少)</option>
+                <option value="rating_desc">按平均攻克难度 (从高到低)</option>
+                <option value="stuck_desc">按待补题数量 (从多到少)</option>
+              </select>
+            </div>
+          </div>
+          <div class="table-wrap" style="max-height: 420px; overflow-y: auto;">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Tag 标签名称</th>
+                  <th>智能诊断分类</th>
+                  <th>掌握度评分</th>
+                  <th>已通过 (AC)</th>
+                  <th>待补题数</th>
+                  <th>提交通过率</th>
+                  <th>平均难度</th>
+                  <th>最高 Top5 均难</th>
+                  <th>专项训练</th>
+                </tr>
+              </thead>
+              <tbody id="tag-diagnostic-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==========================================
+           TAB 4: CONTEST PERFORMANCE & TRACKER
+           ========================================== -->
+      <section id="tab-contests" class="tab-pane">
+        <div class="page-header">
+          <div>
+            <h1 class="page-title">比赛情况与历史复盘</h1>
+            <p class="page-subtitle">追踪每一场 Rated 比赛的排名、当场表现分（Performance）、Rating 涨跌轨迹与近期赛事日历</p>
+          </div>
+        </div>
+
+        <div class="kpi-grid">
+          <div class="kpi-card">
+            <div class="kpi-label"><span>Rated 参赛总场次</span> <span>🏁</span></div>
+            <div id="contest-kpi-count" class="kpi-value">0 场</div>
+            <div id="contest-kpi-winrate" class="kpi-sub">上分场次占比: 0%</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label"><span>历史最高 Rating</span> <span>👑</span></div>
+            <div id="contest-kpi-peak" class="kpi-value">0</div>
+            <div id="contest-kpi-cur" class="kpi-sub">当前 Rating: 0</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label"><span>单场最大上分 / 掉分</span> <span>⚡</span></div>
+            <div id="contest-kpi-maxdelta" class="kpi-value">+0 / -0</div>
+            <div id="contest-kpi-avgdelta" class="kpi-sub">近 5 场净变化: +0</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label"><span>历史最佳比赛排名</span> <span>🥇</span></div>
+            <div id="contest-kpi-bestrank" class="kpi-value">#0</div>
+            <div id="contest-kpi-avgrank" class="kpi-sub">历史场均排名: #0</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">📈 Codeforces 生涯 Rating 历史曲线 (含官方段位色带)</div>
+              <div class="card-desc">支持鼠标滚轮缩放或拖动底部滑块查看特定时期的比赛表现</div>
+            </div>
+          </div>
+          <div id="chart-contest-rating" class="chart-box tall"></div>
+        </div>
+
+        <div class="grid-3-2">
+          <div class="card" style="margin-bottom: 0;">
+            <div class="card-header">
+              <div>
+                <div class="card-title">📜 历史参赛战绩与当场表现分复盘</div>
+                <div class="card-desc">点击比赛名称可在浏览器中打开对应场次 Standings / 题目列表</div>
+              </div>
+            </div>
+            <div class="table-wrap" style="max-height: 370px; overflow-y: auto;">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>比赛名称</th>
+                    <th>日期</th>
+                    <th>排名 (Rank)</th>
+                    <th>当场表现分</th>
+                    <th>涨跌 (Δ)</th>
+                    <th>赛后 Rating</th>
+                  </tr>
+                </thead>
+                <tbody id="contest-history-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="card" style="margin-bottom: 0;">
+            <div class="card-header">
+              <div>
+                <div class="card-title">⏰ 近期即将开始的 Codeforces 比赛</div>
+                <div class="card-desc">提前规划参赛时间，点击可前往官方报名页</div>
+              </div>
+            </div>
+            <div id="upcoming-contests-list" style="display: flex; flex-direction: column; gap: 10px; max-height: 370px; overflow-y: auto;"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==========================================
+           TAB 5: RATING PREDICTOR & ELO SIMULATOR
+           ========================================== -->
+      <section id="tab-predictor" class="tab-pane">
+        <div class="page-header">
+          <div>
+            <h1 class="page-title">分数预测与目标模拟器</h1>
+            <p class="page-subtitle">结合近期刷题难度拟合您的「真实实力 Rating」，并模拟下一场比赛不同名次对应的涨跌分与冲段要求</p>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <!-- Left: True Practice Strength Estimator -->
+          <div class="card" style="margin-bottom: 0;">
+            <div class="card-header">
+              <div>
+                <div class="card-title">🧠 近期刷题真实实力 Rating 拟合评估</div>
+                <div class="card-desc">基于您最近攻克的 30 道题目有效难度、Top 上限与一次通过率推算</div>
+              </div>
+            </div>
+
+            <div id="chart-predictor-gauge" class="chart-box" style="height: 230px;"></div>
+
+            <div class="prediction-result-box">
+              <div>
+                <div class="pred-item-label">当前官方 Rating</div>
+                <div id="pred-official-rating" class="pred-item-val">1685</div>
+              </div>
+              <div>
+                <div class="pred-item-label">刷题拟合实力分</div>
+                <div id="pred-practice-rating" class="pred-item-val" style="color: #34d399;">1765</div>
+              </div>
+              <div>
+                <div class="pred-item-label">潜在上分空间</div>
+                <div id="pred-rating-gap" class="pred-item-val" style="color: #60a5fa;">+80</div>
+              </div>
+            </div>
+
+            <div id="pred-insight-box" style="margin-top: 14px; padding: 12px 14px; border-radius: 9px; background: rgba(59,130,246,0.09); border: 1px solid rgba(59,130,246,0.25); font-size: 12.5px; line-height: 1.6; color: #e5e7eb;"></div>
+          </div>
+
+          <!-- Right: Next Contest Rating Delta Simulator -->
+          <div class="card" style="margin-bottom: 0;">
+            <div class="card-header">
+              <div>
+                <div class="card-title">🎛️ 下场比赛名次 & Rating 涨跌模拟器</div>
+                <div class="card-desc">采用 Codeforces Elo-MMR 种子排位模型，滑动滑块实时预测赛后分数变化</div>
+              </div>
+            </div>
+
+            <div class="sim-slider-group">
+              <div class="sim-slider-header">
+                <span>1. 赛前基准 Rating</span>
+                <span id="sim-base-rating-label" style="color: #60a5fa;">1685</span>
+              </div>
+              <input id="sim-base-rating" class="sim-slider" type="range" min="800" max="2800" step="5" value="1685" />
+            </div>
+
+            <div class="sim-slider-group">
+              <div class="sim-slider-header">
+                <span>2. 比赛类型与参赛人数规模</span>
+                <span id="sim-pool-label" style="color: #a78bfa;">Div. 2 标准场 (约 12,000 人)</span>
+              </div>
+              <select id="sim-contest-type" class="select-control" style="width: 100%;">
+                <option value="div3">Codeforces Div. 3 (约 18,000 人参赛 | Rating 上限 1599)</option>
+                <option value="div2" selected>Codeforces Div. 2 标准场 (约 12,000 人参赛 | 主力赛场)</option>
+                <option value="edu">Educational Round Div. 2 (约 14,000 人参赛)</option>
+                <option value="div12">Div. 1 + Div. 2 联合场 / Global Round (约 15,000 人 | 高手云集)</option>
+                <option value="div1">Codeforces Div. 1 独立场 (约 2,500 人 | 紫名以上)</option>
+              </select>
+            </div>
+
+            <div class="sim-slider-group">
+              <div class="sim-slider-header">
+                <span>3. 预期取得比赛排名 (Rank)</span>
+                <span id="sim-rank-label" style="color: #34d399;">第 650 名 (前 5.4%)</span>
+              </div>
+              <input id="sim-expected-rank" class="sim-slider" type="range" min="1" max="12000" step="10" value="650" />
+            </div>
+
+            <div class="prediction-result-box">
+              <div>
+                <div class="pred-item-label">当场表现分 (Perf)</div>
+                <div id="sim-perf-val" class="pred-item-val" style="color: #c084fc;">1910</div>
+              </div>
+              <div>
+                <div class="pred-item-label">预计涨跌 (Δ Rating)</div>
+                <div id="sim-delta-val" class="pred-item-val" style="color: #34d399;">+56</div>
+              </div>
+              <div>
+                <div class="pred-item-label">预测赛后新 Rating</div>
+                <div id="sim-new-rating-val" class="pred-item-val">1741</div>
+              </div>
+            </div>
+
+            <div id="sim-breakeven-hint" style="margin-top: 12px; font-size: 12px; color: var(--text-secondary); text-align: center;"></div>
+          </div>
+        </div>
+
+        <!-- Bottom: Rank vs Delta Curve & Next Tier Roadmap -->
+        <div class="grid-3-2" style="margin-top: 18px;">
+          <div class="card" style="margin-bottom: 0;">
+            <div class="card-header">
+              <div>
+                <div class="card-title">📉 下场比赛「名次 — 涨跌分 (Δ)」收益曲线</div>
+                <div class="card-desc">直观展示在当前 Rating 下，取得不同名次对应的加分与扣分临界点</div>
+              </div>
+            </div>
+            <div id="chart-predictor-curve" class="chart-box"></div>
+          </div>
+
+          <div class="card" style="margin-bottom: 0;">
+            <div class="card-header">
+              <div>
+                <div class="card-title">🎯 下一段位冲刺目标规划</div>
+                <div class="card-desc">距离晋升下一个头衔所需的比赛表现与日常刷题难度建议</div>
+              </div>
+            </div>
+            <div id="next-tier-roadmap"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==========================================
+           TAB 6: ACCOUNT & API SETTINGS
+           ========================================== -->
+      <section id="tab-settings" class="tab-pane">
+        <div class="page-header">
+          <div>
+            <h1 class="page-title">账号管理与 API 认证设置</h1>
+            <p class="page-subtitle">绑定您的 Codeforces 个人账号、管理多个关注账号，或配置官方 API Key 签名认证</p>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <div class="card-title">👤 登录 / 绑定 Codeforces 账号</div>
+                <div class="card-desc">输入您的 Codeforces 用户名 (Handle) 即可拉取全部做题记录、Tag 统计与比赛历史</div>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Codeforces 用户名 (Handle)</label>
+              <div style="display: flex; gap: 10px;">
+                <input id="settings-handle-input" class="input-control" style="flex: 1;" type="text" placeholder="例如: tourist 或您的 CF 用户名..." />
+                <button id="settings-login-btn" class="btn-primary">立即登录并同步</button>
+              </div>
+              <div class="form-hint">提示：公开接口无需密码即可同步全部 AC 题目、Tag 与历史比赛；数据将自动缓存在您本机。</div>
+            </div>
+
+            <div class="form-group" style="margin-top: 18px;">
+              <label class="form-label">快速体验 / 知名选手预设</label>
+              <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                <button class="btn-secondary preset-handle-btn" data-handle="Demo_Coder">🌟 Demo_Coder (内置完整演示)</button>
+                <button class="btn-secondary preset-handle-btn" data-handle="jiangly">🔥 jiangly</button>
+                <button class="btn-secondary preset-handle-btn" data-handle="tourist">👑 tourist</button>
+                <button class="btn-secondary preset-handle-btn" data-handle="Benq">⚡ Benq</button>
+              </div>
+            </div>
+
+            <div class="form-group" style="margin-top: 20px;">
+              <label class="form-label">已保存的账号列表</label>
+              <div id="saved-accounts-list" style="display: flex; flex-direction: column; gap: 8px;"></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <div class="card-title">🔐 高级认证：Codeforces API Key (可选)</div>
+                <div class="card-desc">如果您需要访问非公开数据，可填入在 CF 官网 Settings -> API 生成的密钥，客户端内置官方 SHA-512 签名算法</div>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">API Key</label>
+              <input id="settings-apikey-input" class="input-control" style="width: 100%;" type="text" placeholder="选填：输入 40 位 Codeforces API Key" />
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">API Secret</label>
+              <input id="settings-apisecret-input" class="input-control" style="width: 100%;" type="password" placeholder="选填：输入 40 位 Codeforces API Secret" />
+              <div class="form-hint">
+                安全说明：您的 Key 与 Secret 仅保存在您本机电脑的 <code>AppData</code> 目录中，即使把软件程序打包发给朋友，也不会包含您的个人配置。
+              </div>
+            </div>
+
+            <div style="display: flex; gap: 10px; margin-top: 16px;">
+              <button id="settings-save-api-btn" class="btn-primary">保存 API 密钥配置</button>
+              <button id="settings-open-cfapi-btn" class="btn-secondary">前往 CF 官网生成 API Key ↗</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- Toast Container -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <script src="./app.js"></script>
+</body>
+</html>

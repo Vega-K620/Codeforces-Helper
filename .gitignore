@@ -1,0 +1,16 @@
+# Dependencies
+node_modules/
+
+# Packaged executables and build artifacts
+release/
+dist/
+out/
+
+# Local user data & logs
+user_data/
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
